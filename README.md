@@ -1,5 +1,5 @@
 ﻿# SWMMEnv
-[![python swimming](assets/pythonSwimming.jpg)](https://www.magnumphotos.com/photographer/martin-parr/)
+[![python swimming](assets/pythonSwimming.jpg)](https://martinparr.com/)
 <p align="center">
   <a href="https://pypi.org/project/swmmEnv"><img src="https://img.shields.io/pypi/v/swmmEnv?color=blue" alt="PyPI"></a>
   <a href="https://pypi.org/project/swmmEnv"><img src="https://img.shields.io/pypi/pyversions/swmmEnv" alt="Python"></a>
