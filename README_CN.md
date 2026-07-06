@@ -13,12 +13,7 @@
 
 ## 概述
 
-SWMMEnv 将 EPA SWMM 水力模拟封装为 PettingZoo 兼容的多智能体 RL 环境。SWMM 模型中的每个泵站、闸门和堰坝都成为一个可控制的 RL 智能体，支持训练以下策略：
-
-- **防洪减灾** — 最小化耦合排水网络的洪水溢流
-- **水位调控** — 维持蓄水节点的目标水位
-- **节能抽排** — 在防洪与能耗之间取得平衡
-- **实时暴雨控制** — 降雨不确定性下的自适应控制策略
+SWMMEnv 将 EPA SWMM 水力模拟封装为 PettingZoo 兼容的多智能体 RL 环境。SWMM 模型中的每个泵站、闸门和堰坝都成为一个可控制的 RL 智能体
 
 ## 功能特性
 
@@ -155,18 +150,78 @@ max_steps: 1000               # 最大 episode 步数
 | `normalized_flooding` | 洪涝缩放到 `[-1, 0]` |
 | `multi_objective` | 洪涝 (10x) + 水位跟踪 |
 
-自定义奖励 — 传入任意 `callable(engine, config) -> float`：
+### 传入自定义奖励函数
+
+有三种方式传入自定义奖励函数：
+
+#### 1. 通过 YAML 配置（仅限内置函数）
+
+在 YAML 文件中设置 `reward_fn` 字段为内置函数名：
+
+```yaml
+reward_fn: "multi_objective"
+```
+
+#### 2. 直接传入 callable（简单逻辑推荐）
+
+定义签名为 `(engine, config) -> float` 的函数，赋给 `config["reward_fn"]`：
 
 ```python
+from swmmEnv import SWMMParallelEnv, load_config
+
 def my_reward(engine, config):
     flooding = engine.get_total_flooding()
     depth = engine.get_node_state("J1")["depth"]
+    # 在这里写你的自定义逻辑
     return -flooding - abs(depth - 1.5)
 
-config["reward_fn"] = my_reward
+config = load_config("config.yaml")
+config["reward_fn"] = my_reward   # 用自定义函数覆盖
+env = SWMMParallelEnv(config)
 ```
 
-有状态的奖励函数类模板见 `swmmEnv/reward/custom_reward.py`。
+#### 3. 基于类的有状态奖励（跨步跟踪）
+
+当奖励需要依赖历史状态（如惩罚开度剧烈变化）时，继承 `CustomRewardFunction`：
+
+```python
+from swmmEnv.reward.custom_reward import CustomRewardFunction
+
+class StabilityReward(CustomRewardFunction):
+    def __init__(self, flood_weight=1.0, stability_weight=0.1):
+        super().__init__()
+        self.flood_weight = flood_weight
+        self.stability_weight = stability_weight
+        self.prev_depths = {}
+
+    def __call__(self, engine, config):
+        # 洪涝惩罚
+        reward = -self.flood_weight * engine.get_total_flooding()
+
+        # 稳定性惩罚：惩罚水深的大幅变化
+        for node_id in config.get("obs_nodes", []):
+            try:
+                depth = engine.get_node_state(node_id)["depth"]
+            except (KeyError, ValueError):
+                continue
+            if node_id in self.prev_depths:
+                change = abs(depth - self.prev_depths[node_id])
+                reward -= self.stability_weight * change
+            self.prev_depths[node_id] = depth
+        return reward
+
+    def reset(self):
+        """在新 episode 开始时重置内部状态。"""
+        self.prev_depths = {}
+
+# 使用方式
+config["reward_fn"] = StabilityReward(flood_weight=2.0, stability_weight=0.2)
+env = SWMMParallelEnv(config)
+```
+
+> **注意**：使用 `SWMMParallelEnv` 时，环境会在每个 episode 开始时自动调用奖励函数的 `reset()` 方法（如果存在）。
+
+完整模板和更多示例见 `swmmEnv/reward/custom_reward.py`。
 
 ## MARLlib 集成
 
@@ -232,7 +287,7 @@ swmmEnv/
   title = {SWMMEnv: Multi-agent RL Environment for SWMM Stormwater Simulation},
   url = {https://github.com/DujDDx/swmmEnv},
   version = {0.1.0},
-  year = {2025}
+  year = {2026}
 }
 ```
 

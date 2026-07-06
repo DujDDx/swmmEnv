@@ -13,12 +13,7 @@
 
 ## Overview
 
-SWMMEnv wraps EPA SWMM hydraulic simulations as a PettingZoo-compatible multi-agent RL environment. Each pump, gate, or weir in your SWMM model becomes a controllable RL agent, enabling training of policies for:
-
-- **Flood mitigation** — minimize flooding across coupled drainage networks
-- **Water level regulation** — maintain target levels in storage nodes
-- **Energy-efficient pumping** — balance flood control against energy cost
-- **Real-time stormwater control** — adaptive policy under rainfall uncertainty
+SWMMEnv wraps EPA SWMM hydraulic simulations as a PettingZoo-compatible multi-agent RL environment. Each pump, gate, or weir in your SWMM model becomes a controllable RL agent
 
 ## Features
 
@@ -155,18 +150,78 @@ Four built-in reward functions, configurable via `reward_fn`:
 | `normalized_flooding` | Flooding scaled to `[-1, 0]` |
 | `multi_objective` | Flooding (10x) + level tracking |
 
-Custom rewards — pass any `callable(engine, config) -> float`:
+### Passing a Custom Reward Function
+
+There are three ways to pass a custom reward function:
+
+#### 1. Via YAML config (built-in only)
+
+Set the `reward_fn` field in your YAML file to one of the built-in names:
+
+```yaml
+reward_fn: "multi_objective"
+```
+
+#### 2. Pass a callable directly (recommended for simple logic)
+
+Define a function with signature `(engine, config) -> float` and assign it to `config["reward_fn"]`:
 
 ```python
+from swmmEnv import SWMMParallelEnv, load_config
+
 def my_reward(engine, config):
     flooding = engine.get_total_flooding()
     depth = engine.get_node_state("J1")["depth"]
+    # Your custom logic here
     return -flooding - abs(depth - 1.5)
 
-config["reward_fn"] = my_reward
+config = load_config("config.yaml")
+config["reward_fn"] = my_reward   # Override with custom function
+env = SWMMParallelEnv(config)
 ```
 
-See `swmmEnv/reward/custom_reward.py` for stateful reward class templates.
+#### 3. Class-based stateful reward (for cross-step tracking)
+
+When your reward depends on previous states (e.g., penalizing rapid setting changes), inherit from `CustomRewardFunction`:
+
+```python
+from swmmEnv.reward.custom_reward import CustomRewardFunction
+
+class StabilityReward(CustomRewardFunction):
+    def __init__(self, flood_weight=1.0, stability_weight=0.1):
+        super().__init__()
+        self.flood_weight = flood_weight
+        self.stability_weight = stability_weight
+        self.prev_depths = {}
+
+    def __call__(self, engine, config):
+        # Flooding penalty
+        reward = -self.flood_weight * engine.get_total_flooding()
+
+        # Stability penalty: penalize large depth changes between steps
+        for node_id in config.get("obs_nodes", []):
+            try:
+                depth = engine.get_node_state(node_id)["depth"]
+            except (KeyError, ValueError):
+                continue
+            if node_id in self.prev_depths:
+                change = abs(depth - self.prev_depths[node_id])
+                reward -= self.stability_weight * change
+            self.prev_depths[node_id] = depth
+        return reward
+
+    def reset(self):
+        """Reset internal state at the start of a new episode."""
+        self.prev_depths = {}
+
+# Usage
+config["reward_fn"] = StabilityReward(flood_weight=2.0, stability_weight=0.2)
+env = SWMMParallelEnv(config)
+```
+
+> **Note**: When using a class-based reward with `SWMMParallelEnv`, the environment calls `reset()` on the reward function at the start of each episode if the method exists.
+
+See `swmmEnv/reward/custom_reward.py` for the full template and more examples.
 
 ## MARLlib Integration
 
@@ -231,7 +286,7 @@ swmmEnv/
   title = {SWMMEnv: Multi-agent RL Environment for SWMM Stormwater Simulation},
   url = {https://github.com/DujDDx/swmmEnv},
   version = {0.1.0},
-  year = {2025}
+  year = {2026}
 }
 ```
 
