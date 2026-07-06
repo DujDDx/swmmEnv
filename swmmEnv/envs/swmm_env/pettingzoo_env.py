@@ -113,35 +113,33 @@ class SWMMParallelEnv(ParallelEnv):
                 dtype=np.float32
             )
 
-    @property
-    def observation_space(self) -> spaces.Box:
+    def observation_space(self, agent: str) -> spaces.Box:
         """
-        Get observation space (for RLlib compatibility).
+        Get observation space for a specific agent (RLlib-compatible).
 
-        Returns the observation space for the first agent.
-        RLlib expects this property for single-policy environments.
+        Args:
+            agent: Agent identifier
 
         Returns:
-            Observation space (Box)
+            Observation space (Box) for the specified agent
         """
-        if not self.possible_agents:
-            raise RuntimeError("No agents available")
-        return self.observation_spaces[self.possible_agents[0]]
+        if agent not in self.observation_spaces:
+            raise ValueError(f"Unknown agent: {agent}")
+        return self.observation_spaces[agent]
 
-    @property
-    def action_space(self) -> spaces.Box:
+    def action_space(self, agent: str) -> spaces.Box:
         """
-        Get action space (for RLlib compatibility).
+        Get action space for a specific agent (RLlib-compatible).
 
-        Returns the action space for the first agent.
-        RLlib expects this property for single-policy environments.
+        Args:
+            agent: Agent identifier
 
         Returns:
-            Action space (Box)
+            Action space (Box) for the specified agent
         """
-        if not self.possible_agents:
-            raise RuntimeError("No agents available")
-        return self.action_spaces[self.possible_agents[0]]
+        if agent not in self.action_spaces:
+            raise ValueError(f"Unknown agent: {agent}")
+        return self.action_spaces[agent]
 
     def reset(
         self,
