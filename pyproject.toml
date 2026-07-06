@@ -7,9 +7,9 @@ name = "swmmEnv"
 version = "0.1.0"
 description = "Multi-agent reinforcement learning environment for SWMM stormwater simulation"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "dujddx", email = "dujddx@163.com"}
 ]
 requires-python = ">=3.8"
 classifiers = [
@@ -42,9 +42,9 @@ marl = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/swmmEnv"
-Documentation = "https://github.com/yourusername/swmmEnv#readme"
-Repository = "https://github.com/yourusername/swmmEnv.git"
+Homepage = "https://github.com/DujDDx/swmmEnv"
+Documentation = "https://github.com/DujDDx/swmmEnv#readme"
+Repository = "https://github.com/DujDDx/swmmEnv.git"
 
 [tool.setuptools.packages.find]
 where = ["."]
