@@ -1,0 +1,14 @@
+# Core dependencies
+pyswmm>=2.1.0
+pettingzoo>=1.24.0
+gymnasium>=0.29.0
+numpy>=1.24.0
+pyyaml>=6.0
+
+# Optional: MARLlib integration
+# marllib
+# ray[rllib]>=2.0
+
+# Development dependencies (install with pip install -r requirements-dev.txt)
+# pytest>=7.0
+# pytest-cov>=4.0

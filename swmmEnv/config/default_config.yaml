@@ -1,0 +1,77 @@
+# SWMMEnv Default Configuration
+
+# Input files
+inp_file: "data/sample.inp"
+rain_file: null  # If null, rainfall defined in inp file
+
+# Agents definition
+agents:
+  pump_1:
+    type: pump
+    link_id: P1
+    upstream_node: J1
+    downstream_node: J2
+  gate_1:
+    type: weir
+    link_id: W1
+    upstream_node: J3
+    downstream_node: J4
+
+# Observation configuration
+obs_nodes:
+  - J1
+  - J2
+  - J3
+  - J4
+
+obs_links:
+  - P1
+  - W1
+
+# Raingage for rainfall observation
+obs_raingage: RG1  # ID of raingage to observe
+
+# Time synchronization
+time_sync:
+  decision_interval: 300  # RL decision interval in seconds (e.g., 5 minutes)
+  swmm_step: 10           # SWMM routing step in seconds
+
+# Normalization parameters
+normalization:
+  obs:
+    depth:
+      mean: 2.0
+      std: 1.5
+    flow:
+      mean: 0.5
+      std: 0.3
+    rainfall:
+      mean: 5.0
+      std: 10.0
+    setting:
+      mean: 0.5
+      std: 0.3
+  reward:
+    mean: 0.0
+    std: 10.0
+
+# Reward function
+reward_fn: "default_reward"
+
+# Reward weights
+reward_weights:
+  flooding: 1.0
+  level_deviation: 0.5
+  energy: 0.2
+
+# Target water levels (optional)
+target_levels:
+  J1: 1.5
+  J2: 1.0
+
+# Episode configuration
+max_steps: 1000
+warmup_steps: 0  # Steps to warmup before episode starts
+
+# Hotstart file for reset (optional)
+hotstart_file: null

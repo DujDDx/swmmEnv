@@ -1,0 +1,76 @@
+# SWMMEnv Example Configuration
+
+# Input files (update paths to your actual SWMM model)
+inp_file: "data/sample.inp"
+rain_file: null  # If null, rainfall defined in inp file
+
+# Agents definition
+# Each agent controls one SWMM element
+agents:
+  pump_1:
+    type: pump
+    link_id: P1
+    upstream_node: J1
+    downstream_node: J2
+  gate_1:
+    type: weir
+    link_id: W1
+    upstream_node: J3
+    downstream_node: J4
+
+# Nodes to observe for state information
+obs_nodes:
+  - J1
+  - J2
+  - J3
+  - J4
+
+# Raingage ID for rainfall observation
+obs_raingage: RG1
+
+# Time synchronization
+# RL agent makes decisions every decision_interval seconds
+# SWMM advances by swmm_step seconds per simulation step
+time_sync:
+  decision_interval: 300  # 5 minutes
+  swmm_step: 10           # 10 seconds
+
+# Observation/reward normalization parameters
+normalization:
+  obs:
+    depth:
+      mean: 2.0
+      std: 1.5
+    flow:
+      mean: 0.5
+      std: 0.3
+    rainfall:
+      mean: 5.0
+      std: 10.0
+    setting:
+      mean: 0.5
+      std: 0.3
+  reward:
+    mean: 0.0
+    std: 10.0
+
+# Reward function name (from swmmEnv.reward)
+reward_fn: "default_reward"
+
+# Reward weights for default_reward
+reward_weights:
+  flooding: 1.0
+  level_deviation: 0.5
+  energy: 0.2
+
+# Target water levels (optional, for level tracking reward)
+target_levels:
+  J1: 1.5
+  J2: 1.0
+
+# Episode configuration
+max_steps: 1000
+warmup_steps: 0  # Steps to run before episode starts
+
+# Hotstart file for consistent resets (optional)
+hotstart_file: null
