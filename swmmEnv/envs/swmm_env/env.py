@@ -59,11 +59,19 @@ class SWMMEnv:
                 - max_steps: Maximum episode steps
                 - obs_nodes: Nodes to observe
                 - obs_raingage: Raingage ID for rainfall observation
+                - worker_index: Worker index for parallel environments (default 0)
         """
         self.config = config
 
-        # Initialize components
-        self.engine = SWMMEngine(config['inp_file'], config)
+        # Get worker index for parallel environments
+        worker_index = config.get('worker_index', 0)
+
+        # Initialize components with worker support
+        self.engine = SWMMEngine(
+            config['inp_file'],
+            config,
+            worker_index=worker_index
+        )
 
         time_sync_config = config['time_sync']
         self.time_sync = TimeSync(

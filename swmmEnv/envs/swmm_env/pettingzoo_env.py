@@ -3,6 +3,11 @@ SWMMParallelEnv - PettingZoo ParallelEnv wrapper for SWMMEnv.
 
 This module provides a PettingZoo-compatible multi-agent environment
 that wraps SWMMEnv, making it directly usable with MARLlib.
+
+RLlib COMPATIBILITY:
+- Implements ParallelEnv API correctly
+- Provides proper observation_space and action_space properties
+- Returns correct types from step() for RLlib wrappers
 """
 
 from typing import Dict, Any, Optional, Tuple
@@ -30,12 +35,17 @@ class SWMMParallelEnv(ParallelEnv):
     - Global reward shared across all agents
     - Agent management (active/terminated agents)
 
+    RLLIB COMPATIBILITY:
+    - observation_space property returns the space for any agent
+    - action_space property returns the space for any agent
+    - step() returns correct types for RLlib wrappers
+
     Example:
         >>> from swmmEnv import SWMMParallelEnv, load_config
         >>> config = load_config("config/example.yaml")
         >>> env = SWMMParallelEnv(config)
         >>> observations, info = env.reset()
-        >>> actions = {"pump_1": 0.8, "gate_1": 0.5}
+        >>> actions = {"pump_1": np.array([0.8]), "gate_1": np.array([0.5])}
         >>> obs, rewards, terms, truncs, infos = env.step(actions)
         >>> env.close()
 
@@ -103,6 +113,36 @@ class SWMMParallelEnv(ParallelEnv):
                 dtype=np.float32
             )
 
+    @property
+    def observation_space(self) -> spaces.Box:
+        """
+        Get observation space (for RLlib compatibility).
+
+        Returns the observation space for the first agent.
+        RLlib expects this property for single-policy environments.
+
+        Returns:
+            Observation space (Box)
+        """
+        if not self.possible_agents:
+            raise RuntimeError("No agents available")
+        return self.observation_spaces[self.possible_agents[0]]
+
+    @property
+    def action_space(self) -> spaces.Box:
+        """
+        Get action space (for RLlib compatibility).
+
+        Returns the action space for the first agent.
+        RLlib expects this property for single-policy environments.
+
+        Returns:
+            Action space (Box)
+        """
+        if not self.possible_agents:
+            raise RuntimeError("No agents available")
+        return self.action_spaces[self.possible_agents[0]]
+
     def reset(
         self,
         seed: Optional[int] = None,
@@ -155,11 +195,16 @@ class SWMMParallelEnv(ParallelEnv):
 
         Returns:
             Tuple of:
-                - observations: Dict of agent observations
-                - rewards: Dict of agent rewards (global reward, shared)
-                - terminations: Dict of agent termination flags
-                - truncations: Dict of agent truncation flags
+                - observations: Dict of agent observations (np.ndarray)
+                - rewards: Dict of agent rewards (float, global reward shared)
+                - terminations: Dict of agent termination flags (bool)
+                - truncations: Dict of agent truncation flags (bool)
                 - infos: Dict of agent info dicts
+
+        RLLIB COMPATIBILITY:
+        - Returns correct types: observations are np.ndarray, not dict
+        - Rewards are floats, not arrays
+        - Terminations and truncations are booleans
         """
         if not self._has_reset:
             raise RuntimeError(
@@ -170,19 +215,27 @@ class SWMMParallelEnv(ParallelEnv):
         action_dict = {}
         for agent_id, action_array in actions.items():
             if agent_id in self.agents:
-                # Extract scalar from array
-                action_value = float(action_array[0])
+                # Handle both array and scalar actions
+                if isinstance(action_array, np.ndarray):
+                    action_value = float(action_array.flatten()[0])
+                else:
+                    action_value = float(action_array)
                 action_dict[agent_id] = action_value
 
         # Step core environment
         observations, global_reward, done, info = self.core_env.step(action_dict)
 
+        # Ensure observations are numpy arrays
+        for agent_id in observations:
+            if not isinstance(observations[agent_id], np.ndarray):
+                observations[agent_id] = np.array(observations[agent_id], dtype=np.float32)
+
         # Create return dictionaries
         # All agents share global reward (SWMM is coupled system)
-        rewards = {agent: global_reward for agent in self.agents}
+        rewards = {agent: float(global_reward) for agent in self.agents}
 
         # Termination: all agents terminate together
-        terminations = {agent: done for agent in self.agents}
+        terminations = {agent: bool(done) for agent in self.agents}
 
         # Truncation: not used, always False
         truncations = {agent: False for agent in self.agents}
