@@ -45,6 +45,8 @@ pip install "swmmEnv[dev]"
 
 ## Quick Start
 
+### Basic Usage with PettingZoo API
+
 ```python
 from swmmEnv import SWMMParallelEnv, load_config
 
@@ -62,6 +64,117 @@ actions = {agent: env.action_space(agent).sample() for agent in env.agents}
 observations, rewards, terminations, truncations, infos = env.step(actions)
 
 env.close()
+```
+
+### Using Default Configuration
+
+If you don't have an `.inp` file yet, you can load the package's built-in default config to inspect the environment structure:
+
+```python
+from swmmEnv import load_config
+
+# Load built-in default configuration (no path = loads default)
+config = load_config()
+print(config)
+```
+
+### Standalone MDP (without PettingZoo)
+
+Use the core `SWMMEnv` directly for testing or custom integration outside MARL frameworks:
+
+```python
+from swmmEnv import SWMMEnv, load_config
+
+config = load_config("config/example.yaml")
+env = SWMMEnv(config)
+
+obs = env.reset()
+actions = {"pump_1": 0.8, "gate_1": 0.5}
+obs, reward, done, info = env.step(actions)
+
+print(f"Reward: {reward:.3f}, Done: {done}")
+env.close()
+```
+
+### Manual Random Control
+
+Run a full episode with random actions to verify the environment works end-to-end:
+
+```python
+import numpy as np
+from swmmEnv import SWMMParallelEnv, load_config
+
+config = load_config("config/example.yaml")
+env = SWMMParallelEnv(config)
+
+observations, _ = env.reset()
+total_reward = 0.0
+step = 0
+done = False
+
+while not done:
+    actions = {
+        agent: env.action_space(agent).sample()
+        for agent in env.agents
+    }
+    obs, rewards, terms, truncs, infos = env.step(actions)
+    reward = list(rewards.values())[0]
+    total_reward += reward
+    step += 1
+    done = any(terms.values())
+
+    if step % 50 == 0:
+        env.render()
+
+print(f"Episode finished after {step} steps, total reward: {total_reward:.3f}")
+env.close()
+```
+
+### Inspecting Environment State
+
+Retrieve detailed hydraulic state during an episode:
+
+```python
+from swmmEnv import SWMMParallelEnv, load_config
+
+config = load_config("config/example.yaml")
+env = SWMMParallelEnv(config)
+obs, _ = env.reset()
+
+# Get full state snapshot
+state = env.core_env.get_state()
+print("Node states:", state["nodes"])
+print("Link states:", state["links"])
+print("Rainfall:", state["rainfall"])
+
+# Get environment info for RL frameworks
+info = env.get_env_info()
+print(f"Agents: {info['num_agents']}, Episode limit: {info['episode_limit']}")
+
+# Inspect individual nodes
+engine = env.core_env.engine
+for node_id in ["J1", "J2"]:
+    node_state = engine.get_node_state(node_id)
+    print(f"
+Node {node_id}: depth={node_state['depth']:.2f}m, "
+          f"flooding={node_state['flooding']:.4f} m³/s, "
+          f"inflow={node_state['total_inflow']:.2f} m³/s")
+
+env.close()
+```
+
+### Interactive Control Mode
+
+Manually input actions for each agent via command line, useful for debugging:
+
+```bash
+python examples/manual_control.py --interactive
+```
+
+Or load a custom config:
+
+```bash
+python examples/manual_control.py --config my_scenario.yaml --interactive
 ```
 
 ## Architecture
@@ -223,21 +336,300 @@ env = SWMMParallelEnv(config)
 
 See `swmmEnv/reward/custom_reward.py` for the full template and more examples.
 
-## MARLlib Integration
+## API Reference
+
+### `SWMMParallelEnv(config)`
+
+The primary PettingZoo-compatible multi-agent environment. Implements `pettingzoo.ParallelEnv`.
+
+```python
+from swmmEnv import SWMMParallelEnv
+
+env = SWMMParallelEnv(config)
+obs, infos = env.reset()
+obs, rewards, terminations, truncations, infos = env.step(actions)
+```
+
+**Key methods:**
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `reset` | `(seed, options) -> (observations, infos)` | Start a new episode; returns initial observations |
+| `step` | `(actions) -> (obs, rewards, terms, truncs, infos)` | Apply actions and advance the simulation by one decision interval |
+| `observation_space` | `(agent) -> Box` | Get observation space for an agent (RLlib-compatible) |
+| `action_space` | `(agent) -> Box` | Get action space for an agent (RLlib-compatible) |
+| `observe` | `(agent) -> ndarray` | Get current observation for a specific agent |
+| `state` | `() -> ndarray` | Get concatenated global observation (for centralized-critic algorithms) |
+| `render` | `(mode) -> None` | Print current environment state to console |
+| `close` | `() -> None` | Release simulation resources |
+| `get_env_info` | `() -> dict` | Get environment metadata for MARLlib |
+
+**Key attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `agents` | list | Currently active agent IDs |
+| `possible_agents` | list | All agent IDs in the scenario |
+| `core_env` | SWMMEnv | Underlying core MDP environment |
+| `observation_spaces` | dict | Per-agent observation spaces |
+| `action_spaces` | dict | Per-agent action spaces |
+
+### `SWMMEnv(config)`
+
+Core MDP environment, independent of PettingZoo. Used internally by `SWMMParallelEnv`.
+
+```python
+from swmmEnv import SWMMEnv
+
+env = SWMMEnv(config)
+obs = env.reset()
+obs, reward, done, info = env.step({"pump_1": 0.8, "gate_1": 0.5})
+```
+
+**Key methods:** `reset()`, `step(action_dict)`, `get_observation(agent_id)`, `get_reward()`, `get_state()`, `render(mode)`, `close()`.
+
+### `SWMMEngine(inp_file, config, worker_index=0)`
+
+Low-level PySWMM simulation wrapper. Handles simulation lifecycle, state retrieval, and action application.
+
+```python
+from swmmEnv import SWMMEngine
+
+engine = SWMMEngine("model.inp", config, worker_index=0)
+engine.start()
+engine.apply_action("pump_1", 0.8)
+engine.step()
+
+# Retrieve state
+node = engine.get_node_state("J1")
+link = engine.get_link_state("P1")
+flooding = engine.get_total_flooding()
+rainfall = engine.get_rainfall("RG1")
+time = engine.get_current_time()
+
+engine.close()
+```
+
+**Key utilities:**
+
+| Method | Description |
+|--------|-------------|
+| `start()` | Begin simulation and register before/after step callbacks |
+| `step()` | Advance simulation by one control interval |
+| `reset()` | Reset simulation using hotstart for fast episode reset |
+| `close()` | Release simulation and cleanup worker files |
+| `apply_action(agent_id, setting)` | Queue a control action in [0, 1] for an agent |
+| `get_node_state(node_id)` | Get depth, head, volume, flooding, inflow for a node |
+| `get_link_state(link_id)` | Get flow, depth, volume, current_setting for a link |
+| `get_rainfall(gage_id)` | Get rainfall intensity (mm/h) from a rain gage |
+| `get_total_flooding()` | Get total flooding rate across all nodes (m³/s) |
+| `get_system_stats()` | Get routing and runoff statistics |
+| `is_ended()` | Check if the simulation has reached its end time |
+| `get_current_time()` | Get current simulation datetime |
+| `save_hotstart(filepath)` | Save current state to a .hsf hotstart file |
+
+### `TimeSync(decision_interval, swmm_step)`
+
+Manages synchronization between RL decision steps and SWMM simulation steps. The `decision_interval` must be divisible by `swmm_step`.
+
+```python
+from swmmEnv.sim import TimeSync
+
+ts = TimeSync(decision_interval=300, swmm_step=10)
+print(ts.skip_steps)  # 30 SWMM steps per RL step
+ts.advance(engine)    # Advances engine by 30 SWMM steps
+```
+
+**Key methods:** `advance(engine)`, `reset()`, `should_act(step)`, `get_elapsed_time()`, `get_elapsed_time_minutes()`.
+
+### `StateNormalizer(config)`
+
+Z-score normalization for observations and rewards to stabilize training.
+
+```python
+from swmmEnv.sim import StateNormalizer
+
+normalizer = StateNormalizer(config["normalization"])
+obs_normalized = normalizer.normalize_obs(raw_obs, obs_names)
+reward_normalized = normalizer.normalize_reward(raw_reward)
+reward_denorm = normalizer.denormalize_reward(normalized_reward)
+```
+
+**Key methods:** `normalize_obs(obs, obs_names)`, `normalize_obs_value(value, name)`, `normalize_reward(reward)`, `denormalize_reward(normalized_reward)`, `min_max_normalize(value, min, max)`, `clip_and_normalize(value, name, clip_range)`, `update_stats(obs, obs_names)`.
+
+### `MappingRegistry(agents_config)`
+
+Agent-to-SWMM-element mapping registry.
+
+```python
+from swmmEnv.sim import MappingRegistry
+
+registry = MappingRegistry(config["agents"])
+print(registry.get_all_agents())        # ["pump_1", "gate_1"]
+print(registry.get_element_type("pump_1"))  # "pump"
+print(registry.get_element_id("pump_1"))    # "P1"
+print(registry.get_upstream_node("pump_1")) # "J1"
+```
+
+**Key methods:** `get_element_id(agent)`, `get_element_type(agent)`, `get_upstream_node(agent)`, `get_downstream_node(agent)`, `get_agent_config(agent)`, `get_all_agents()`, `get_agents_by_type(type)`, `get_all_link_ids()`, `get_all_node_ids()`, `agent_exists(agent)`.
+
+### `load_config(config_path=None, merge_defaults=True)`
+
+Load and validate a YAML configuration file.
+
+```python
+from swmmEnv import load_config
+
+# From file
+config = load_config("path/to/config.yaml")
+
+# Default config only
+config = load_config()
+
+# Without merging defaults (used for custom env setup via make_env)
+config = load_config("path/to/config.yaml", merge_defaults=False)
+```
+
+### `validate_config(config)`
+
+Validate a configuration dictionary. Raises `ValueError` with descriptive messages if required fields are missing or invalid.
+
+```python
+from swmmEnv.config import validate_config
+
+validate_config(config)  # Raises ValueError on invalid config
+```
+
+
+## Training
+
+### MARLlib Integration (Recommended)
+
+SWMMEnv integrates with [MARLlib](https://github.com/Replicable-MARL/MARLlib) through a standalone registration mechanism.
+
+**Step 1: Register the environment**
+
+```python
+from swmmEnv.envs.register_env import register_with_marllib
+
+register_with_marllib()
+# Now available as `env: "swmm"` in MARLlib configs
+```
+
+**Step 2: Create environment and train**
+
+```python
+from marllib import marl
+from swmmEnv.envs.register_env import make_env
+
+# Create environment
+env = make_env(config_path="config/example.yaml")
+
+# Build MAPPO model
+model = marl.build_model(
+    environment=env,
+    algorithm=marl.algos.mappo,
+    model_preference={
+        "core_arch": "mlp",
+        "encode_layer": "128-128",
+        "hidden_dim": 64,
+    }
+)
+
+# Start training
+mappo = marl.algos.mappo(hyperparam_source="common")
+mappo.fit(
+    env=env,
+    model=model,
+    stop={"timesteps_total": 100000},
+    lr=0.0005,
+    gamma=0.99,
+    batch_episode=10,
+)
+```
+
+**Using `make_env` directly (without permanent registration):**
 
 ```python
 from swmmEnv.envs.register_env import make_env
 
+# With explicit config path
 env = make_env(config_path="config/my_scenario.yaml", worker_index=0)
+
+# With map_name lookup (searches configs/, config/, cwd)
+env = make_env(map_name="control", worker_index=0)
 ```
 
-Or register with MARLlib registry:
+`make_env` always loads configuration **without merging defaults**, avoiding conflicts from the default config's placeholder agents.
+
+### Ray RLlib (Direct Integration)
+
+You can also use SWMMEnv directly with Ray RLlib without MARLlib:
 
 ```python
-from swmmEnv.envs.register_env import register_with_marllib
-register_with_marllib()
-# Now use `env: swmm` in MARLlib configs
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.env import ParallelPettingZooEnv
+from ray.tune.registry import register_env
+import ray
+from swmmEnv import SWMMParallelEnv, load_config
+
+ray.init(ignore_reinit_error=True)
+
+def env_creator(env_config):
+    config = load_config("config/example.yaml")
+    config.update(env_config)
+    return SWMMParallelEnv(config)
+
+register_env("swmm_env", env_creator)
+
+algo = (
+    PPOConfig()
+    .environment("swmm_env")
+    .multi_agent(
+        policies={"shared_policy": None},
+        policy_mapping_fn=lambda agent_id: "shared_policy",
+    )
+    .training(lr=0.0005, gamma=0.99, train_batch_size=4000)
+    .resources(num_gpus=0)
+).build()
+
+for i in range(10):
+    result = algo.train()
+    print(f"Iteration {i}: "
+          f"reward_mean={result['episode_reward_mean']:.2f}, "
+          f"timesteps={result['timesteps_total']}")
+
+ray.shutdown()
 ```
+
+### Parallel Worker Training
+
+SWMMEnv supports parallel environment workers for distributed training. Each worker gets an isolated copy of the `.inp` file to prevent file-lock conflicts:
+
+```python
+from swmmEnv.envs.register_env import make_env
+
+# Worker 0 (uses original .inp file)
+env_0 = make_env(config_path="config/example.yaml", worker_index=0)
+
+# Worker 1 (gets a temp copy of .inp)
+env_1 = make_env(config_path="config/example.yaml", worker_index=1)
+
+# Worker 2 (gets another isolated copy)
+env_2 = make_env(config_path="config/example.yaml", worker_index=2)
+```
+
+For efficient episode resets across many episodes, the engine uses **hotstart files** to restore simulation state without recreating the `Simulation` object (much faster for RL training loops).
+
+**Key configuration for training:**
+
+| Parameter | Recommended Value | Notes |
+|-----------|------------------|-------|
+| `warmup_steps` | 0-10 | Steps before first RL decision; helps stabilize initial conditions |
+| `max_steps` | 500-2000 | Episode length; tune based on storm event duration |
+| `hotstart_file` | auto | Created automatically; provides fast resets |
+| Normalization | Calibrate from data | Set `mean`/`std` based on historical simulation runs |
+
 
 ## Project Structure
 
@@ -269,14 +661,16 @@ swmmEnv/
 └── README.md
 ```
 
+
+
 ## Requirements
 
-- Python ≥ 3.8
-- PySWMM ≥ 2.1.0
-- PettingZoo ≥ 1.24.0
-- Gymnasium ≥ 0.29.0
-- NumPy ≥ 1.24.0
-- PyYAML ≥ 6.0
+- Python >= 3.8
+- PySWMM >= 2.1.0
+- PettingZoo >= 1.24.0
+- Gymnasium >= 0.29.0
+- NumPy >= 1.24.0
+- PyYAML >= 6.0
 
 ## Citation
 
@@ -293,3 +687,61 @@ swmmEnv/
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](LICENSE) for details.
+## Running Examples & Tests
+
+### Example Scripts
+
+The repository includes ready-to-run examples in the `examples/` directory:
+
+```bash
+# Random control (default config, 1 episode)
+python examples/manual_control.py
+
+# Random control with custom config and 5 episodes
+python examples/manual_control.py --config my_config.yaml --episodes 5
+
+# Interactive mode (manually type actions)
+python examples/manual_control.py --interactive
+
+# MAPPO training with MARLlib
+python examples/train_mappo.py
+
+# MAPPO training with custom config
+python examples/train_mappo.py --config my_config.yaml --steps 50000
+
+# RLlib training directly
+python examples/train_mappo.py --backend rllib --steps 100000
+```
+
+### Running Tests
+
+Run the unit test suite to verify the installation:
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run tests for a specific component
+pytest tests/test_engine.py -v
+pytest tests/test_mapping.py -v
+pytest tests/test_normalizer.py -v
+pytest tests/test_time_sync.py -v
+pytest tests/test_swmm_env.py -v
+pytest tests/test_pettingzoo_env.py -v
+
+# With coverage report
+pytest tests/ --cov=swmmEnv --cov-report=term-missing
+```
+
+## Troubleshooting
+
+| Issue | Likely Cause | Solution |
+|-------|-------------|----------|
+| `ValueError: decision_interval must be divisible by swmm_step` | Invalid `time_sync` config | Ensure `decision_interval % swmm_step == 0` |
+| `FileNotFoundError: Configuration file not found` | Wrong config path | Use absolute path or path relative to cwd |
+| `PySWMM simulation not started` errors | Missing `.inp` file or incorrect path | Verify `inp_file` exists and path is correct |
+| RL training gradients unstable | Poor normalization parameters | Calibrate `mean`/`std` from historical simulation data |
+| Environment resets are slow | Hotstart file not used | Worker creates hotstart automatically; check `_initial_hotstart` is set |
+| `RuntimeError: Environment must be reset before stepping` | `reset()` not called before `step()` | Always call `env.reset()` first |
+| Concurrent simulation crashes | Multiple PySWMM instances on same `.inp` | Set `worker_index > 0` for each worker to get isolated `.inp` copies |

@@ -45,6 +45,8 @@ pip install "swmmEnv[dev]"
 
 ## 快速开始
 
+### 基本用法（PettingZoo API）
+
 ```python
 from swmmEnv import SWMMParallelEnv, load_config
 
@@ -62,6 +64,117 @@ actions = {agent: env.action_space(agent).sample() for agent in env.agents}
 observations, rewards, terminations, truncations, infos = env.step(actions)
 
 env.close()
+```
+
+### 使用默认配置
+
+如果还没有 `.inp` 文件，可以加载包内置的默认配置来了解环境结构：
+
+```python
+from swmmEnv import load_config
+
+# 加载内置默认配置（不传路径 = 加载默认配置）
+config = load_config()
+print(config)
+```
+
+### 独立使用 MDP 环境（不依赖 PettingZoo）
+
+直接使用核心环境 `SWMMEnv` 进行测试或自定义集成：
+
+```python
+from swmmEnv import SWMMEnv, load_config
+
+config = load_config("config/example.yaml")
+env = SWMMEnv(config)
+
+obs = env.reset()
+actions = {"pump_1": 0.8, "gate_1": 0.5}
+obs, reward, done, info = env.step(actions)
+
+print(f"奖励: {reward:.3f}, 终止: {done}")
+env.close()
+```
+
+### 手动随机控制
+
+运行完整 episode 验证环境是否正常工作：
+
+```python
+import numpy as np
+from swmmEnv import SWMMParallelEnv, load_config
+
+config = load_config("config/example.yaml")
+env = SWMMParallelEnv(config)
+
+observations, _ = env.reset()
+total_reward = 0.0
+step = 0
+done = False
+
+while not done:
+    actions = {
+        agent: env.action_space(agent).sample()
+        for agent in env.agents
+    }
+    obs, rewards, terms, truncs, infos = env.step(actions)
+    reward = list(rewards.values())[0]
+    total_reward += reward
+    step += 1
+    done = any(terms.values())
+
+    if step % 50 == 0:
+        env.render()
+
+print(f"Episode 结束，共 {step} 步，累计奖励: {total_reward:.3f}")
+env.close()
+```
+
+### 检查环境状态
+
+在 episode 运行过程中获取详细的水力状态：
+
+```python
+from swmmEnv import SWMMParallelEnv, load_config
+
+config = load_config("config/example.yaml")
+env = SWMMParallelEnv(config)
+obs, _ = env.reset()
+
+# 获取完整状态快照
+state = env.core_env.get_state()
+print("节点状态:", state["nodes"])
+print("管道状态:", state["links"])
+print("降雨强度:", state["rainfall"])
+
+# 获取环境信息（用于 RL 框架）
+info = env.get_env_info()
+print(f"智能体数: {info['num_agents']}, Episode 上限: {info['episode_limit']}")
+
+# 查看单个节点
+engine = env.core_env.engine
+for node_id in ["J1", "J2"]:
+    node_state = engine.get_node_state(node_id)
+    print(f"
+节点 {node_id}: 水深={node_state['depth']:.2f}m, "
+          f"洪涝={node_state['flooding']:.4f} m³/s, "
+          f"入流={node_state['total_inflow']:.2f} m³/s")
+
+env.close()
+```
+
+### 交互式控制模式
+
+通过命令行手动输入每个智能体的动作，适合调试：
+
+```bash
+python examples/manual_control.py --interactive
+```
+
+或加载自定义配置：
+
+```bash
+python examples/manual_control.py --config my_scenario.yaml --interactive
 ```
 
 ## 架构设计
@@ -125,6 +238,46 @@ normalization:                # 归一化参数（z-score）
 reward_fn: "default_reward"   # 奖励函数名称
 max_steps: 1000               # 最大 episode 步数
 ```
+
+
+
+### 完整配置参数字段说明
+
+以下是每个配置字段的完整说明：
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `inp_file` | string | 是 | SWMM `.inp` 模型文件路径 |
+| `rain_file` | string 或 null | 否 | 降雨时序文件路径；为 null 时使用 `.inp` 中定义的降雨 |
+| `obs_raingage` | string | 否 | 用于观测降雨强度的雨量计 ID |
+| `obs_nodes` | string 列表 | 否 | 需要通过 `get_state()` 获取完整状态的节点 ID |
+| `agents` | dict | 是 | 智能体 ID 到智能体配置的映射（参见下方） |
+| `time_sync` | dict | 是 | 时间同步参数 |
+| `time_sync.decision_interval` | int | 是 | RL 决策间隔（秒），必须能被 `swmm_step` 整除 |
+| `time_sync.swmm_step` | int | 是 | SWMM 路由步长（秒） |
+| `normalization` | dict | 是 | 观测和奖励的归一化参数 |
+| `normalization.obs` | dict | 是 | 各观测变量的 z-score 归一化均值和标准差 |
+| `normalization.reward` | dict | 是 | 奖励的 z-score 归一化均值和标准差 |
+| `reward_fn` | string/callable/object | 否 | 内置奖励函数名、自定义函数或 `CustomRewardFunction` 实例 |
+| `reward_weights` | dict | 否 | 奖励组件权重（`flooding`, `level_deviation`, `energy`） |
+| `target_levels` | dict | 否 | 各节点的目标水深，例如 `{J1: 1.5, J2: 1.0}` |
+| `max_steps` | int | 否 | 每个 episode 的最大步数（默认：1000） |
+| `warmup_steps` | int | 否 | 第一个 RL 决策前推进的模拟步数（默认：0） |
+| `hotstart_file` | string 或 null | 否 | 用于快速 episode 重置的 `.hsf` 热启动文件路径 |
+| `worker_index` | int | 否 | 并行训练的工作节点索引（默认：0） |
+
+**智能体配置**（`agents` 下的每个条目）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `type` | string | `pump`（泵站）、`gate`（闸门）或 `weir`（堰坝）之一 |
+| `link_id` | string | SWMM 管道 ID，对应被控制的水力元件 |
+| `upstream_node` | string | 上游节点 ID（包含在观测中） |
+| `downstream_node` | string | 下游节点 ID（包含在观测中） |
+
+**归一化变量**（位于 `normalization.obs` 下）：
+
+每个变量（`depth`、`flow`、`rainfall`、`setting`）应设置 `mean` 和 `std`。观测值通过 z-score 归一化：`(value - mean) / std`。
 
 ## 智能体观测与动作空间
 
@@ -223,21 +376,298 @@ env = SWMMParallelEnv(config)
 
 完整模板和更多示例见 `swmmEnv/reward/custom_reward.py`。
 
-## MARLlib 集成
+## API 参考
+
+### `SWMMParallelEnv(config)`
+
+主要的 PettingZoo 兼容多智能体环境。实现了 `pettingzoo.ParallelEnv`。
+
+```python
+from swmmEnv import SWMMParallelEnv
+
+env = SWMMParallelEnv(config)
+obs, infos = env.reset()
+obs, rewards, terminations, truncations, infos = env.step(actions)
+```
+
+**核心方法：**
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `reset` | `(seed, options) -> (observations, infos)` | 开始新 episode，返回初始观测 |
+| `step` | `(actions) -> (obs, rewards, terms, truncs, infos)` | 应用动作并推进模拟一个决策间隔 |
+| `observation_space` | `(agent) -> Box` | 获取智能体的观测空间（RLlib 兼容） |
+| `action_space` | `(agent) -> Box` | 获取智能体的动作空间（RLlib 兼容） |
+| `observe` | `(agent) -> ndarray` | 获取特定智能体的当前观测 |
+| `state` | `() -> ndarray` | 获取拼接后的全局观测（用于集中式评论家算法） |
+| `render` | `(mode) -> None` | 将当前环境状态打印到控制台 |
+| `close` | `() -> None` | 释放模拟资源 |
+| `get_env_info` | `() -> dict` | 获取用于 MARLlib 的环境元数据 |
+
+**核心属性：**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `agents` | list | 当前活跃的智能体 ID 列表 |
+| `possible_agents` | list | 场景中所有智能体 ID |
+| `core_env` | SWMMEnv | 底层核心 MDP 环境 |
+| `observation_spaces` | dict | 每个智能体的观测空间 |
+| `action_spaces` | dict | 每个智能体的动作空间 |
+
+### `SWMMEnv(config)`
+
+核心 MDP 环境，独立于 PettingZoo。被 `SWMMParallelEnv` 内部使用。
+
+```python
+from swmmEnv import SWMMEnv
+
+env = SWMMEnv(config)
+obs = env.reset()
+obs, reward, done, info = env.step({"pump_1": 0.8, "gate_1": 0.5})
+```
+
+**核心方法：** `reset()`, `step(action_dict)`, `get_observation(agent_id)`, `get_reward()`, `get_state()`, `render(mode)`, `close()`。
+
+### `SWMMEngine(inp_file, config, worker_index=0)`
+
+底层 PySWMM 模拟封装。处理模拟生命周期、状态检索和动作应用。
+
+```python
+from swmmEnv import SWMMEngine
+
+engine = SWMMEngine("model.inp", config, worker_index=0)
+engine.start()
+engine.apply_action("pump_1", 0.8)
+engine.step()
+
+# 检索状态
+node = engine.get_node_state("J1")
+link = engine.get_link_state("P1")
+flooding = engine.get_total_flooding()
+rainfall = engine.get_rainfall("RG1")
+time = engine.get_current_time()
+
+engine.close()
+```
+
+**关键工具方法：**
+
+| 方法 | 说明 |
+|------|------|
+| `start()` | 开始模拟并注册步进前后的回调函数 |
+| `step()` | 推进模拟一个控制间隔 |
+| `reset()` | 使用热启动文件快速重置模拟 |
+| `close()` | 释放模拟资源并清理工作节点文件 |
+| `apply_action(agent_id, setting)` | 为智能体排队一个 `[0, 1]` 范围内的控制动作 |
+| `get_node_state(node_id)` | 获取节点的水深、水头、体积、洪涝、入流 |
+| `get_link_state(link_id)` | 获取管道的流量、水深、体积、当前开度 |
+| `get_rainfall(gage_id)` | 获取雨量计的降雨强度（mm/h） |
+| `get_total_flooding()` | 获取所有节点的总洪涝率（m³/s） |
+| `get_system_stats()` | 获取路由和径流统计信息 |
+| `is_ended()` | 检查模拟是否已到达结束时间 |
+| `get_current_time()` | 获取当前模拟时间 |
+| `save_hotstart(filepath)` | 将当前状态保存为 `.hsf` 热启动文件 |
+
+### `TimeSync(decision_interval, swmm_step)`
+
+管理 RL 决策步和 SWMM 模拟步之间的同步。`decision_interval` 必须能被 `swmm_step` 整除。
+
+```python
+from swmmEnv.sim import TimeSync
+
+ts = TimeSync(decision_interval=300, swmm_step=10)
+print(ts.skip_steps)  # 每个 RL 步 = 30 个 SWMM 步
+ts.advance(engine)    # 推进引擎 30 个 SWMM 步
+```
+
+**核心方法：** `advance(engine)`, `reset()`, `should_act(step)`, `get_elapsed_time()`, `get_elapsed_time_minutes()`。
+
+### `StateNormalizer(config)`
+
+观测和奖励的 z-score 归一化，用于稳定训练。
+
+```python
+from swmmEnv.sim import StateNormalizer
+
+normalizer = StateNormalizer(config["normalization"])
+obs_normalized = normalizer.normalize_obs(raw_obs, obs_names)
+reward_normalized = normalizer.normalize_reward(raw_reward)
+reward_denorm = normalizer.denormalize_reward(normalized_reward)
+```
+
+**核心方法：** `normalize_obs(obs, obs_names)`, `normalize_obs_value(value, name)`, `normalize_reward(reward)`, `denormalize_reward(normalized_reward)`, `min_max_normalize(value, min, max)`, `clip_and_normalize(value, name, clip_range)`, `update_stats(obs, obs_names)`。
+
+### `MappingRegistry(agents_config)`
+
+智能体到 SWMM 元件的映射注册表。
+
+```python
+from swmmEnv.sim import MappingRegistry
+
+registry = MappingRegistry(config["agents"])
+print(registry.get_all_agents())        # ["pump_1", "gate_1"]
+print(registry.get_element_type("pump_1"))  # "pump"
+print(registry.get_element_id("pump_1"))    # "P1"
+print(registry.get_upstream_node("pump_1")) # "J1"
+```
+
+**核心方法：** `get_element_id(agent)`, `get_element_type(agent)`, `get_upstream_node(agent)`, `get_downstream_node(agent)`, `get_agent_config(agent)`, `get_all_agents()`, `get_agents_by_type(type)`, `get_all_link_ids()`, `get_all_node_ids()`, `agent_exists(agent)`。
+
+### `load_config(config_path=None, merge_defaults=True)`
+
+加载并验证 YAML 配置文件。
+
+```python
+from swmmEnv import load_config
+
+# 从文件加载
+config = load_config("path/to/config.yaml")
+
+# 仅加载默认配置
+config = load_config()
+
+# 不合并默认配置（用于 make_env 的自定义环境设置）
+config = load_config("path/to/config.yaml", merge_defaults=False)
+```
+
+### `validate_config(config)`
+
+验证配置字典。如果缺少必需字段或字段无效，会抛出 `ValueError` 并附带描述性消息。
+
+```python
+from swmmEnv.config import validate_config
+
+validate_config(config)  # 配置无效时抛出 ValueError
+```
+
+## 训练
+
+### MARLlib 集成（推荐）
+
+SWMMEnv 通过独立的注册机制与 [MARLlib](https://github.com/Replicable-MARL/MARLlib) 集成。
+
+**第一步：注册环境**
+
+```python
+from swmmEnv.envs.register_env import register_with_marllib
+
+register_with_marllib()
+# 现在可以在 MARLlib 配置中使用 `env: "swmm"`
+```
+
+**第二步：创建环境并训练**
+
+```python
+from marllib import marl
+from swmmEnv.envs.register_env import make_env
+
+# 创建环境
+env = make_env(config_path="config/example.yaml")
+
+# 构建 MAPPO 模型
+model = marl.build_model(
+    environment=env,
+    algorithm=marl.algos.mappo,
+    model_preference={
+        "core_arch": "mlp",
+        "encode_layer": "128-128",
+        "hidden_dim": 64,
+    }
+)
+
+# 开始训练
+mappo = marl.algos.mappo(hyperparam_source="common")
+mappo.fit(
+    env=env,
+    model=model,
+    stop={"timesteps_total": 100000},
+    lr=0.0005,
+    gamma=0.99,
+    batch_episode=10,
+)
+```
+
+**直接使用 `make_env`（无需永久注册）：**
 
 ```python
 from swmmEnv.envs.register_env import make_env
 
+# 指定配置路径
 env = make_env(config_path="config/my_scenario.yaml", worker_index=0)
+
+# 通过 map_name 查找（搜索 configs/, config/, 当前目录）
+env = make_env(map_name="control", worker_index=0)
 ```
 
-或注册到 MARLlib 环境注册表：
+`make_env` 始终加载配置时**不合并默认配置**，避免默认配置的占位智能体导致的冲突。
+
+### Ray RLlib（直接集成）
+
+你也可以绕过 MARLlib，直接使用 Ray RLlib 训练：
 
 ```python
-from swmmEnv.envs.register_env import register_with_marllib
-register_with_marllib()
-# 之后在 MARLlib 配置中使用 `env: swmm`
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.env import ParallelPettingZooEnv
+from ray.tune.registry import register_env
+import ray
+from swmmEnv import SWMMParallelEnv, load_config
+
+ray.init(ignore_reinit_error=True)
+
+def env_creator(env_config):
+    config = load_config("config/example.yaml")
+    config.update(env_config)
+    return SWMMParallelEnv(config)
+
+register_env("swmm_env", env_creator)
+
+algo = (
+    PPOConfig()
+    .environment("swmm_env")
+    .multi_agent(
+        policies={"shared_policy": None},
+        policy_mapping_fn=lambda agent_id: "shared_policy",
+    )
+    .training(lr=0.0005, gamma=0.99, train_batch_size=4000)
+    .resources(num_gpus=0)
+).build()
+
+for i in range(10):
+    result = algo.train()
+    print(f"Iteration {i}: "
+          f"reward_mean={result['episode_reward_mean']:.2f}, "
+          f"timesteps={result['timesteps_total']}")
+
+ray.shutdown()
 ```
+
+### 并行 Worker 训练
+
+SWMMEnv 支持分布式训练的并行环境工作节点。每个 worker 获得一个隔离的 `.inp` 文件副本，防止文件锁冲突：
+
+```python
+from swmmEnv.envs.register_env import make_env
+
+# Worker 0（使用原始 .inp 文件）
+env_0 = make_env(config_path="config/example.yaml", worker_index=0)
+
+# Worker 1（获得一个临时 .inp 副本）
+env_1 = make_env(config_path="config/example.yaml", worker_index=1)
+
+# Worker 2（获得另一个隔离副本）
+env_2 = make_env(config_path="config/example.yaml", worker_index=2)
+```
+
+为提升跨 episode 的重置效率，引擎使用**热启动文件**来恢复模拟状态，无需重新创建 `Simulation` 对象（对于 RL 训练循环来说要快得多）。
+
+**训练关键配置：**
+
+| 参数 | 推荐值 | 说明 |
+|------|--------|------|
+| `warmup_steps` | 0-10 | 第一个 RL 决策前的步数；有助于稳定初始条件 |
+| `max_steps` | 500-2000 | Episode 长度；根据暴雨事件时长调整 |
+| `hotstart_file` | 自动 | 自动创建，提供快速重置 |
+| 归一化参数 | 从数据中校准 | 基于历史模拟运行设置 `mean`/`std` |
 
 ## 项目结构
 
@@ -291,6 +721,66 @@ swmmEnv/
 }
 ```
 
+
+
+
 ## 开源协议
 
 MIT License。详见 [LICENSE](LICENSE) 文件。
+## 运行示例与测试
+
+### 示例脚本
+
+仓库包含可直接运行的示例，位于 `examples/` 目录：
+
+```bash
+# 随机控制（默认配置，1 个 episode）
+python examples/manual_control.py
+
+# 随机控制（自定义配置，5 个 episodes）
+python examples/manual_control.py --config my_config.yaml --episodes 5
+
+# 交互模式（手动输入动作）
+python examples/manual_control.py --interactive
+
+# 使用 MARLlib 训练 MAPPO
+python examples/train_mappo.py
+
+# 使用自定义配置训练 MAPPO
+python examples/train_mappo.py --config my_config.yaml --steps 50000
+
+# 直接使用 RLlib 训练
+python examples/train_mappo.py --backend rllib --steps 100000
+```
+
+### 运行测试
+
+运行单元测试套件验证安装：
+
+```bash
+# 运行所有测试
+pytest tests/ -v
+
+# 运行特定组件的测试
+pytest tests/test_engine.py -v
+pytest tests/test_mapping.py -v
+pytest tests/test_normalizer.py -v
+pytest tests/test_time_sync.py -v
+pytest tests/test_swmm_env.py -v
+pytest tests/test_pettingzoo_env.py -v
+
+# 带覆盖率报告
+pytest tests/ --cov=swmmEnv --cov-report=term-missing
+```
+
+## 常见问题排查
+
+| 问题 | 可能原因 | 解决方案 |
+|------|----------|----------|
+| `ValueError: decision_interval must be divisible by swmm_step` | `time_sync` 配置无效 | 确保 `decision_interval % swmm_step == 0` |
+| `FileNotFoundError: Configuration file not found` | 配置路径错误 | 使用绝对路径或相对于当前目录的路径 |
+| `PySWMM simulation not started` 相关错误 | `.inp` 文件缺失或路径错误 | 验证 `inp_file` 是否存在且路径正确 |
+| RL 训练梯度不稳定 | 归一化参数不当 | 基于历史模拟数据校准 `mean`/`std` |
+| 环境重置速度慢 | 未使用热启动文件 | Worker 会自动创建热启动；检查 `_initial_hotstart` 是否已设置 |
+| `RuntimeError: Environment must be reset before stepping` | `step()` 前未调用 `reset()` | 确保先调用 `env.reset()` |
+| 并发模拟崩溃 | 多个 PySWMM 实例使用同一 `.inp` | 为每个 worker 设置 `worker_index > 0` 以获得隔离的 `.inp` 副本 |
