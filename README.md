@@ -1,10 +1,10 @@
-# SWMMEnv
+﻿# SWMMEnv
 [![python swimming](assets/pythonSwimming.jpg)](https://martinparr.com/)
 <p align="center">
   <a href="https://pypi.org/project/swmmEnv"><img src="https://img.shields.io/pypi/v/swmmEnv?color=blue" alt="PyPI"></a>
   <a href="https://pypi.org/project/swmmEnv"><img src="https://img.shields.io/pypi/pyversions/swmmEnv" alt="Python"></a>
   <a href="https://github.com/DujDDx/swmmEnv/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
-  <a href="README_CN.md">中文文档</a>
+  <a href="README_CN_simplified.md">中文</a> · <a href="README_JP.md">日本語</a> · <a href="README_CN_traditional.md">繁體中文</a>
 </p>
 
 **Multi-agent reinforcement learning environment for SWMM stormwater simulation**, built on [PettingZoo](https://pettingzoo.farama.org/) and [PySWMM](https://github.com/pyswmm/pyswmm).
@@ -17,14 +17,14 @@ SWMMEnv wraps EPA SWMM hydraulic simulations as a PettingZoo-compatible and RLli
 
 ## Features
 
-- **PettingZoo ParallelEnv API** — drop-in compatible with MARLlib, RLlib, Tianshou
-- **RLlib MultiAgentEnv API** — pass class reference directly, no manual adapter needed
-- **Config-driven** — swap SWMM models without changing code
-- **Flexible agent types** — pumps, gates, weirs with continuous control `[0, 1]`
-- **Time synchronization** — decouples RL decision interval from SWMM routing step
-- **State normalization** — z-score or min-max normalization for stable training
-- **Custom reward functions** — pluggable reward with flooding, level-deviation, and energy components
-- **Parallel worker support** — isolated `.inp` copies for safe multi-worker training
+- **PettingZoo ParallelEnv API** 鈥?drop-in compatible with MARLlib, RLlib, Tianshou
+- **RLlib MultiAgentEnv API** 鈥?pass class reference directly, no manual adapter needed
+- **Config-driven** 鈥?swap SWMM models without changing code
+- **Flexible agent types** 鈥?pumps, gates, weirs with continuous control `[0, 1]`
+- **Time synchronization** 鈥?decouples RL decision interval from SWMM routing step
+- **State normalization** 鈥?z-score or min-max normalization for stable training
+- **Custom reward functions** 鈥?pluggable reward with flooding, level-deviation, and energy components
+- **Parallel worker support** 鈥?isolated `.inp` copies for safe multi-worker training
 
 ## Installation
 
@@ -71,7 +71,7 @@ env.close()
 
 ### RLlib API (SWMMMultiAgentEnv)
 
-`SWMMMultiAgentEnv` wraps `SWMMParallelEnv` into an RLlib-compatible `MultiAgentEnv`. Pass the class reference directly — no factory function or manual adapter needed.
+`SWMMMultiAgentEnv` wraps `SWMMParallelEnv` into an RLlib-compatible `MultiAgentEnv`. Pass the class reference directly 鈥?no factory function or manual adapter needed.
 
 **Direct class reference** (RLlib 2.x+):
 
@@ -205,8 +205,8 @@ engine = env.core_env.engine
 for node_id in ["J1", "J2"]:
     node_state = engine.get_node_state(node_id)
     print(f"\nNode {node_id}: depth={node_state['depth']:.2f}m, "
-          f"flooding={node_state['flooding']:.4f} m³/s, "
-          f"inflow={node_state['total_inflow']:.2f} m³/s")
+          f"flooding={node_state['flooding']:.4f} m鲁/s, "
+          f"inflow={node_state['total_inflow']:.2f} m鲁/s")
 
 env.close()
 ```
@@ -229,23 +229,23 @@ python examples/manual_control.py --config my_scenario.yaml --interactive
 
 ```
  RL Agent (MAPPO / QMIX / PPO)
-          │
-          ▼
- ┌────────────────────────┐
- │  SWMMParallelEnv       │  PettingZoo ParallelEnv wrapper
- │  ┌──────────────────┐  │
- │  │  SWMMEnv (MDP)   │  │  Core RL logic: obs, reward, done
- │  │  ┌─────────────┐ │  │
- │  │  │ SWMMEngine  │ │  │  PySWMM simulation interface
- │  │  │ TimeSync    │ │  │  RL/SWMM step alignment
- │  │  │ Normalizer  │ │  │  Observation/reward scaling
- │  │  │ Mapping     │ │  │  Agent ⇄ SWMM element registry
- │  │  │ Reward Fn   │ │  │  Pluggable reward computation
- │  │  └─────────────┘ │  │
- │  └──────────────────┘  │
- └────────────────────────┘
-          │
-          ▼
+          鈹?
+          鈻?
+ 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+ 鈹? SWMMParallelEnv       鈹? PettingZoo ParallelEnv wrapper
+ 鈹? 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹? 鈹?
+ 鈹? 鈹? SWMMEnv (MDP)   鈹? 鈹? Core RL logic: obs, reward, done
+ 鈹? 鈹? 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹? 鈹?
+ 鈹? 鈹? 鈹?SWMMEngine  鈹?鈹? 鈹? PySWMM simulation interface
+ 鈹? 鈹? 鈹?TimeSync    鈹?鈹? 鈹? RL/SWMM step alignment
+ 鈹? 鈹? 鈹?Normalizer  鈹?鈹? 鈹? Observation/reward scaling
+ 鈹? 鈹? 鈹?Mapping     鈹?鈹? 鈹? Agent 鈬?SWMM element registry
+ 鈹? 鈹? 鈹?Reward Fn   鈹?鈹? 鈹? Pluggable reward computation
+ 鈹? 鈹? 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹? 鈹?
+ 鈹? 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹? 鈹?
+ 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+          鈹?
+          鈻?
    PySWMM (SWMM5 engine)
 ```
 
@@ -295,7 +295,7 @@ max_steps: 1000
 | gate | 4 | upstream depth, downstream depth, setting, rainfall |
 | weir | 4 | upstream depth, downstream depth, setting, rainfall |
 
-- **Observation space**: `Box(-∞, +∞)` after z-score normalization
+- **Observation space**: `Box(-鈭? +鈭?` after z-score normalization
 - **Action space**: `Box(0, 1)` continuous control setting
 
 All agents share a **global reward** (coupled drainage system).
@@ -435,8 +435,8 @@ obs, rewards, terms, truncs, infos = env.step(actions)
 ```
 
 `env_config` accepts two forms:
-- `{"config_path": "/path/to/config.yaml"}` — RLlib-style; resolves and loads the YAML file
-- `{"inp_file": ..., "agents": ..., ...}` — full config dict passed through directly
+- `{"config_path": "/path/to/config.yaml"}` 鈥?RLlib-style; resolves and loads the YAML file
+- `{"inp_file": ..., "agents": ..., ...}` 鈥?full config dict passed through directly
 
 **Key methods:**
 
@@ -452,8 +452,8 @@ obs, rewards, terms, truncs, infos = env.step(actions)
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `possible_agents` | list | All agent IDs (replaces deprecated `get_agent_ids()`) |
-| `observation_space` | `spaces.Dict` | Dict mapping agent ID → `Box` (legacy OldAPIStack) |
-| `action_space` | `spaces.Dict` | Dict mapping agent ID → `Box` (legacy OldAPIStack) |
+| `observation_space` | `spaces.Dict` | Dict mapping agent ID 鈫?`Box` (legacy OldAPIStack) |
+| `action_space` | `spaces.Dict` | Dict mapping agent ID 鈫?`Box` (legacy OldAPIStack) |
 | `observation_spaces` | dict | Per-agent observation spaces (new API stack) |
 | `action_spaces` | dict | Per-agent action spaces (new API stack) |
 
@@ -515,7 +515,7 @@ engine.close()
 | `get_node_state(node_id)` | Get depth, head, volume, flooding, inflow for a node |
 | `get_link_state(link_id)` | Get flow, depth, volume, current_setting for a link |
 | `get_rainfall(gage_id)` | Get rainfall intensity (mm/h) from a rain gage |
-| `get_total_flooding()` | Get total flooding rate across all nodes (m³/s) |
+| `get_total_flooding()` | Get total flooding rate across all nodes (m鲁/s) |
 | `get_system_stats()` | Get routing and runoff statistics |
 | `is_ended()` | Check if the simulation has reached its end time |
 | `get_current_time()` | Get current simulation datetime |
@@ -596,7 +596,7 @@ validate_config(config)  # Raises ValueError on invalid config
 
 ## Training
 
-### RLlib Direct Integration (Recommended — New API)
+### RLlib Direct Integration (Recommended 鈥?New API)
 
 The simplest way to use SWMMEnv with RLlib: pass `SWMMMultiAgentEnv` directly to `PPOConfig().environment()`.
 
@@ -738,31 +738,34 @@ For efficient episode resets across many episodes, the engine uses **hotstart fi
 
 ```
 swmmEnv/
-├── swmmEnv/
-│   ├── __init__.py              # Package entry
-│   ├── sim/
-│   │   ├── engine.py            # PySWMM simulation wrapper
-│   │   ├── time_sync.py         # RL/SWMM step synchronization
-│   │   ├── normalizer.py        # Z-score observation normalization
-│   │   └── mapping.py           # Agent ⇄ SWMM element registry
-│   ├── envs/
-│   │   ├── swmm_env/
-│   │   │   ├── env.py           # Core MDP environment
-│   │   │   ├── pettingzoo_env.py # PettingZoo ParallelEnv wrapper
-│   │   │   └── rllib_env.py     # RLlib MultiAgentEnv adapter
-│   │   └── register_env.py      # MARLlib / RLlib registration helpers
-│   ├── reward/
-│   │   ├── default_reward.py    # Built-in reward functions
-│   │   └── custom_reward.py     # Custom reward templates
-│   └── config/
-│       ├── loader.py            # YAML config loading & validation
-│       └── default_config.yaml  # Default configuration
-├── examples/
-│   ├── manual_control.py        # Interactive debugging
-│   └── train_mappo.py           # MAPPO training example
-├── tests/                       # Unit tests
-├── pyproject.toml
-└── README.md
+鈹溾攢鈹€ swmmEnv/
+鈹?  鈹溾攢鈹€ __init__.py              # Package entry
+鈹?  鈹溾攢鈹€ sim/
+鈹?  鈹?  鈹溾攢鈹€ engine.py            # PySWMM simulation wrapper
+鈹?  鈹?  鈹溾攢鈹€ time_sync.py         # RL/SWMM step synchronization
+鈹?  鈹?  鈹溾攢鈹€ normalizer.py        # Z-score observation normalization
+鈹?  鈹?  鈹斺攢鈹€ mapping.py           # Agent 鈬?SWMM element registry
+鈹?  鈹溾攢鈹€ envs/
+鈹?  鈹?  鈹溾攢鈹€ swmm_env/
+鈹?  鈹?  鈹?  鈹溾攢鈹€ env.py           # Core MDP environment
+鈹?  鈹?  鈹?  鈹溾攢鈹€ pettingzoo_env.py # PettingZoo ParallelEnv wrapper
+鈹?  鈹?  鈹?  鈹斺攢鈹€ rllib_env.py     # RLlib MultiAgentEnv adapter
+鈹?  鈹?  鈹斺攢鈹€ register_env.py      # MARLlib / RLlib registration helpers
+鈹?  鈹溾攢鈹€ reward/
+鈹?  鈹?  鈹溾攢鈹€ default_reward.py    # Built-in reward functions
+鈹?  鈹?  鈹斺攢鈹€ custom_reward.py     # Custom reward templates
+鈹?  鈹斺攢鈹€ config/
+鈹?      鈹溾攢鈹€ loader.py            # YAML config loading & validation
+鈹?      鈹斺攢鈹€ default_config.yaml  # Default configuration
+鈹溾攢鈹€ examples/
+鈹?  鈹溾攢鈹€ manual_control.py        # Interactive debugging
+鈹?  鈹斺攢鈹€ train_mappo.py           # MAPPO training example
+鈹溾攢鈹€ tests/                       # Unit tests
+鈹溾攢鈹€ pyproject.toml
+├── README_CN.md                 # 简体中文
+├── README_JP.md                 # 日本語
+├── README_TW.md                 # 繁體中文
+└── README.md                    # English
 ```
 
 
