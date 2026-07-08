@@ -1,4 +1,4 @@
-﻿# SWMMEnv
+# SWMMEnv
 [![python swimming](assets/pythonSwimming.jpg)](https://martinparr.com/)
 <p align="center">
   <a href="https://pypi.org/project/swmmEnv"><img src="https://img.shields.io/pypi/v/swmmEnv?color=blue" alt="PyPI"></a>
@@ -13,11 +13,12 @@
 
 ## Overview
 
-SWMMEnv wraps EPA SWMM hydraulic simulations as a PettingZoo-compatible multi-agent RL environment. Each pump, gate, or weir in your SWMM model becomes a controllable RL agent
+SWMMEnv wraps EPA SWMM hydraulic simulations as a PettingZoo-compatible and RLlib-native multi-agent RL environment. Each pump, gate, or weir in your SWMM model becomes a controllable RL agent
 
 ## Features
 
 - **PettingZoo ParallelEnv API** — drop-in compatible with MARLlib, RLlib, Tianshou
+- **RLlib MultiAgentEnv API** — pass class reference directly, no manual adapter needed
 - **Config-driven** — swap SWMM models without changing code
 - **Flexible agent types** — pumps, gates, weirs with continuous control `[0, 1]`
 - **Time synchronization** — decouples RL decision interval from SWMM routing step
@@ -43,6 +44,8 @@ For development:
 pip install "swmmEnv[dev]"
 ```
 
+> `ray[rllib]` is an **optional** dependency. You can import `SWMMMultiAgentEnv` without it, but ray must be installed to instantiate the class.
+
 ## Quick Start
 
 ### Basic Usage with PettingZoo API
@@ -63,6 +66,52 @@ observations, info = env.reset()
 actions = {agent: env.action_space(agent).sample() for agent in env.agents}
 observations, rewards, terminations, truncations, infos = env.step(actions)
 
+env.close()
+```
+
+### RLlib API (SWMMMultiAgentEnv)
+
+`SWMMMultiAgentEnv` wraps `SWMMParallelEnv` into an RLlib-compatible `MultiAgentEnv`. Pass the class reference directly — no factory function or manual adapter needed.
+
+**Direct class reference** (RLlib 2.x+):
+
+```python
+from swmmEnv import SWMMMultiAgentEnv
+from ray.rllib.algorithms.ppo import PPOConfig
+
+config = (
+    PPOConfig()
+    .environment(
+        SWMMMultiAgentEnv,                          # pass the class directly
+        env_config={"config_path": "configs/control.yaml"},
+    )
+    .multi_agent(
+        policies={"shared_policy": None},
+        policy_mapping_fn=lambda agent_id: "shared_policy",
+    )
+)
+algo = config.build()
+```
+
+**Via register_env** (classic pattern):
+
+```python
+from ray.tune.registry import register_env
+from swmmEnv.envs.register_env import make_rllib_env
+
+register_env("swmm_env", lambda cfg: make_rllib_env(config_path="configs/control.yaml"))
+```
+
+**Direct instantiation** (testing / debugging):
+
+```python
+from swmmEnv import SWMMMultiAgentEnv
+import numpy as np
+
+env = SWMMMultiAgentEnv({"config_path": "configs/control.yaml"})
+obs, info = env.reset()
+actions = {aid: np.array([0.5]) for aid in env.possible_agents}
+obs, rewards, terms, truncs, infos = env.step(actions)
 env.close()
 ```
 
@@ -155,8 +204,7 @@ print(f"Agents: {info['num_agents']}, Episode limit: {info['episode_limit']}")
 engine = env.core_env.engine
 for node_id in ["J1", "J2"]:
     node_state = engine.get_node_state(node_id)
-    print(f"
-Node {node_id}: depth={node_state['depth']:.2f}m, "
+    print(f"\nNode {node_id}: depth={node_state['depth']:.2f}m, "
           f"flooding={node_state['flooding']:.4f} m³/s, "
           f"inflow={node_state['total_inflow']:.2f} m³/s")
 
@@ -374,6 +422,51 @@ obs, rewards, terminations, truncations, infos = env.step(actions)
 | `observation_spaces` | dict | Per-agent observation spaces |
 | `action_spaces` | dict | Per-agent action spaces |
 
+### `SWMMMultiAgentEnv(env_config)`
+
+RLlib-compatible `MultiAgentEnv` wrapping `SWMMParallelEnv`. Extends `ray.rllib.env.MultiAgentEnv`.
+
+```python
+from swmmEnv import SWMMMultiAgentEnv
+
+env = SWMMMultiAgentEnv({"config_path": "configs/control.yaml"})
+obs, infos = env.reset()
+obs, rewards, terms, truncs, infos = env.step(actions)
+```
+
+`env_config` accepts two forms:
+- `{"config_path": "/path/to/config.yaml"}` — RLlib-style; resolves and loads the YAML file
+- `{"inp_file": ..., "agents": ..., ...}` — full config dict passed through directly
+
+**Key methods:**
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `reset` | `(*, seed, options) -> (obs, infos)` | Start a new episode |
+| `step` | `(action_dict) -> (obs, rewards, terms, truncs, infos)` | Step the environment; `terms`/`truncs` include `__all__` key |
+| `close` | `() -> None` | Release simulation resources |
+| `render` | `(mode) -> None` | Print current environment state |
+
+**Key attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `possible_agents` | list | All agent IDs (replaces deprecated `get_agent_ids()`) |
+| `observation_space` | `spaces.Dict` | Dict mapping agent ID → `Box` (legacy OldAPIStack) |
+| `action_space` | `spaces.Dict` | Dict mapping agent ID → `Box` (legacy OldAPIStack) |
+| `observation_spaces` | dict | Per-agent observation spaces (new API stack) |
+| `action_spaces` | dict | Per-agent action spaces (new API stack) |
+
+### `make_rllib_env(config_path)`
+
+Convenience factory function in `swmmEnv.envs.register_env`:
+
+```python
+from swmmEnv.envs.register_env import make_rllib_env
+
+env = make_rllib_env("configs/control.yaml")
+```
+
 ### `SWMMEnv(config)`
 
 Core MDP environment, independent of PettingZoo. Used internally by `SWMMParallelEnv`.
@@ -503,7 +596,57 @@ validate_config(config)  # Raises ValueError on invalid config
 
 ## Training
 
-### MARLlib Integration (Recommended)
+### RLlib Direct Integration (Recommended — New API)
+
+The simplest way to use SWMMEnv with RLlib: pass `SWMMMultiAgentEnv` directly to `PPOConfig().environment()`.
+
+```python
+from swmmEnv import SWMMMultiAgentEnv
+from ray.rllib.algorithms.ppo import PPOConfig
+
+algo = (
+    PPOConfig()
+    .environment(
+        SWMMMultiAgentEnv,
+        env_config={"config_path": "configs/control.yaml"},
+    )
+    .multi_agent(
+        policies={"shared_policy": None},
+        policy_mapping_fn=lambda agent_id: "shared_policy",
+    )
+    .training(lr=0.0005, gamma=0.99, train_batch_size=4000)
+    .resources(num_gpus=0)
+).build()
+
+for i in range(10):
+    result = algo.train()
+    print(f"Iteration {i}: "
+          f"reward_mean={result['episode_reward_mean']:.2f}, "
+          f"timesteps={result['timesteps_total']}")
+```
+
+### Ray RLlib (Classic register_env Pattern)
+
+```python
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.tune.registry import register_env
+from swmmEnv.envs.register_env import make_rllib_env
+
+register_env("swmm_env", lambda cfg: make_rllib_env(config_path="configs/control.yaml"))
+
+algo = (
+    PPOConfig()
+    .environment("swmm_env")
+    .multi_agent(
+        policies={"shared_policy": None},
+        policy_mapping_fn=lambda agent_id: "shared_policy",
+    )
+    .training(lr=0.0005, gamma=0.99, train_batch_size=4000)
+    .resources(num_gpus=0)
+).build()
+```
+
+### MARLlib Integration
 
 SWMMEnv integrates with [MARLlib](https://github.com/Replicable-MARL/MARLlib) through a standalone registration mechanism.
 
@@ -562,46 +705,6 @@ env = make_env(map_name="control", worker_index=0)
 
 `make_env` always loads configuration **without merging defaults**, avoiding conflicts from the default config's placeholder agents.
 
-### Ray RLlib (Direct Integration)
-
-You can also use SWMMEnv directly with Ray RLlib without MARLlib:
-
-```python
-from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env import ParallelPettingZooEnv
-from ray.tune.registry import register_env
-import ray
-from swmmEnv import SWMMParallelEnv, load_config
-
-ray.init(ignore_reinit_error=True)
-
-def env_creator(env_config):
-    config = load_config("config/example.yaml")
-    config.update(env_config)
-    return SWMMParallelEnv(config)
-
-register_env("swmm_env", env_creator)
-
-algo = (
-    PPOConfig()
-    .environment("swmm_env")
-    .multi_agent(
-        policies={"shared_policy": None},
-        policy_mapping_fn=lambda agent_id: "shared_policy",
-    )
-    .training(lr=0.0005, gamma=0.99, train_batch_size=4000)
-    .resources(num_gpus=0)
-).build()
-
-for i in range(10):
-    result = algo.train()
-    print(f"Iteration {i}: "
-          f"reward_mean={result['episode_reward_mean']:.2f}, "
-          f"timesteps={result['timesteps_total']}")
-
-ray.shutdown()
-```
-
 ### Parallel Worker Training
 
 SWMMEnv supports parallel environment workers for distributed training. Each worker gets an isolated copy of the `.inp` file to prevent file-lock conflicts:
@@ -645,8 +748,9 @@ swmmEnv/
 │   ├── envs/
 │   │   ├── swmm_env/
 │   │   │   ├── env.py           # Core MDP environment
-│   │   │   └── pettingzoo_env.py # PettingZoo ParallelEnv wrapper
-│   │   └── register_env.py      # MARLlib registration helpers
+│   │   │   ├── pettingzoo_env.py # PettingZoo ParallelEnv wrapper
+│   │   │   └── rllib_env.py     # RLlib MultiAgentEnv adapter
+│   │   └── register_env.py      # MARLlib / RLlib registration helpers
 │   ├── reward/
 │   │   ├── default_reward.py    # Built-in reward functions
 │   │   └── custom_reward.py     # Custom reward templates
@@ -687,7 +791,7 @@ swmmEnv/
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
-MIT License. See [LICENSE](LICENSE) for details.
+
 ## Running Examples & Tests
 
 ### Example Scripts
@@ -745,3 +849,4 @@ pytest tests/ --cov=swmmEnv --cov-report=term-missing
 | Environment resets are slow | Hotstart file not used | Worker creates hotstart automatically; check `_initial_hotstart` is set |
 | `RuntimeError: Environment must be reset before stepping` | `reset()` not called before `step()` | Always call `env.reset()` first |
 | Concurrent simulation crashes | Multiple PySWMM instances on same `.inp` | Set `worker_index > 0` for each worker to get isolated `.inp` copies |
+| `ImportError: ray[rllib] is required` when instantiating `SWMMMultiAgentEnv` | ray not installed | Run `pip install "swmmEnv[marl]"` or `pip install ray[rllib]` |

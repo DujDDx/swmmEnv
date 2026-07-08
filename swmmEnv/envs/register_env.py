@@ -221,6 +221,29 @@ def get_marllib_config(map_name: str = "control") -> Dict[str, Any]:
     }
 
 
+def make_rllib_env(config_path: str) -> "SWMMMultiAgentEnv":
+    """
+    Create an RLlib-compatible SWMMMultiAgentEnv from a config file path.
+
+    This is a convenience wrapper for users who want a quick way to create
+    an RLlib environment instance without manually wrapping the config dict.
+
+    Args:
+        config_path: Path to a YAML configuration file.
+
+    Returns:
+        SWMMMultiAgentEnv instance
+
+    Example:
+        >>> from swmmEnv.envs.register_env import make_rllib_env
+        >>> env = make_rllib_env("configs/control.yaml")
+        >>> obs, info = env.reset()
+    """
+    from swmmEnv.envs.swmm_env.rllib_env import SWMMMultiAgentEnv
+
+    return SWMMMultiAgentEnv({"config_path": config_path})
+
+
 # Convenience function for testing
 def create_test_env() -> SWMMParallelEnv:
     """
@@ -241,6 +264,7 @@ def create_test_env() -> SWMMParallelEnv:
 
 __all__ = [
     'make_env',
+    'make_rllib_env',
     'register_with_marllib',
     'get_marllib_config',
     'create_test_env',
