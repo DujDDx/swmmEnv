@@ -9,7 +9,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="swmmEnv",
-    version="0.1.0",
+    version="0.2.0",
     description="Multi-agent reinforcement learning environment for SWMM stormwater simulation",
     author="dujddx",
     author_email="dujddx@163.com",
