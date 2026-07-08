@@ -228,24 +228,24 @@ python examples/manual_control.py --config my_scenario.yaml --interactive
 ## Architecture
 
 ```
- RL Agent (MAPPO / QMIX / PPO)
-          鈹?
-          鈻?
- 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
- 鈹? SWMMParallelEnv       鈹? PettingZoo ParallelEnv wrapper
- 鈹? 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹? 鈹?
- 鈹? 鈹? SWMMEnv (MDP)   鈹? 鈹? Core RL logic: obs, reward, done
- 鈹? 鈹? 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹? 鈹?
- 鈹? 鈹? 鈹?SWMMEngine  鈹?鈹? 鈹? PySWMM simulation interface
- 鈹? 鈹? 鈹?TimeSync    鈹?鈹? 鈹? RL/SWMM step alignment
- 鈹? 鈹? 鈹?Normalizer  鈹?鈹? 鈹? Observation/reward scaling
- 鈹? 鈹? 鈹?Mapping     鈹?鈹? 鈹? Agent 鈬?SWMM element registry
- 鈹? 鈹? 鈹?Reward Fn   鈹?鈹? 鈹? Pluggable reward computation
- 鈹? 鈹? 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹? 鈹?
- 鈹? 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹? 鈹?
- 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
-          鈹?
-          鈻?
+           RL Agent (MAPPO / QMIX / PPO)
+           │
+           ▼
+┌─────────────────────────────┐
+│ SWMMParallelEnv             │ PettingZoo ParallelEnv wrapper
+│ ┌───────────────────────┐   │
+│ │ SWMMEnv (MDP)         │   │ Core RL logic: obs, reward, done
+│ │ ┌─────────────────┐   │   │
+│ │ │ SWMMEngine      │   │   │ PySWMM simulation interface
+│ │ │ TimeSync        │   │   │ RL/SWMM step alignment
+│ │ │ Normalizer      │   │   │ Observation/reward scaling
+│ │ │ Mapping         │   │   │ Agent ⇄ SWMM element registry
+│ │ │ Reward Fn       │   │   │ Pluggable reward computation
+│ │ └─────────────────┘   │   │
+│ └───────────────────────┘   │
+└─────────────────────────────┘
+           │
+           ▼
    PySWMM (SWMM5 engine)
 ```
 
@@ -738,30 +738,30 @@ For efficient episode resets across many episodes, the engine uses **hotstart fi
 
 ```
 swmmEnv/
-鈹溾攢鈹€ swmmEnv/
-鈹?  鈹溾攢鈹€ __init__.py              # Package entry
-鈹?  鈹溾攢鈹€ sim/
-鈹?  鈹?  鈹溾攢鈹€ engine.py            # PySWMM simulation wrapper
-鈹?  鈹?  鈹溾攢鈹€ time_sync.py         # RL/SWMM step synchronization
-鈹?  鈹?  鈹溾攢鈹€ normalizer.py        # Z-score observation normalization
-鈹?  鈹?  鈹斺攢鈹€ mapping.py           # Agent 鈬?SWMM element registry
-鈹?  鈹溾攢鈹€ envs/
-鈹?  鈹?  鈹溾攢鈹€ swmm_env/
-鈹?  鈹?  鈹?  鈹溾攢鈹€ env.py           # Core MDP environment
-鈹?  鈹?  鈹?  鈹溾攢鈹€ pettingzoo_env.py # PettingZoo ParallelEnv wrapper
-鈹?  鈹?  鈹?  鈹斺攢鈹€ rllib_env.py     # RLlib MultiAgentEnv adapter
-鈹?  鈹?  鈹斺攢鈹€ register_env.py      # MARLlib / RLlib registration helpers
-鈹?  鈹溾攢鈹€ reward/
-鈹?  鈹?  鈹溾攢鈹€ default_reward.py    # Built-in reward functions
-鈹?  鈹?  鈹斺攢鈹€ custom_reward.py     # Custom reward templates
-鈹?  鈹斺攢鈹€ config/
-鈹?      鈹溾攢鈹€ loader.py            # YAML config loading & validation
-鈹?      鈹斺攢鈹€ default_config.yaml  # Default configuration
-鈹溾攢鈹€ examples/
-鈹?  鈹溾攢鈹€ manual_control.py        # Interactive debugging
-鈹?  鈹斺攢鈹€ train_mappo.py           # MAPPO training example
-鈹溾攢鈹€ tests/                       # Unit tests
-鈹溾攢鈹€ pyproject.toml
+├── swmmEnv/
+│   ├── __init__.py              # Package entry
+│   ├── sim/
+│   │   ├── engine.py            # PySWMM simulation wrapper
+│   │   ├── time_sync.py         # RL/SWMM step synchronization
+│   │   ├── normalizer.py        # Z-score observation normalization
+│   │   └── mapping.py           # Agent ⇄ SWMM element registry
+│   ├── envs/
+│   │   ├── swmm_env/
+│   │   │   ├── env.py           # Core MDP environment
+│   │   │   ├── pettingzoo_env.py # PettingZoo ParallelEnv wrapper
+│   │   │   └── rllib_env.py     # RLlib MultiAgentEnv adapter
+│   │   └── register_env.py      # MARLlib / RLlib registration helpers
+│   ├── reward/
+│   │   ├── default_reward.py    # Built-in reward functions
+│   │   └── custom_reward.py     # Custom reward templates
+│   └── config/
+│       ├── loader.py            # YAML config loading & validation
+│       └── default_config.yaml  # Default configuration
+├── examples/
+│   ├── manual_control.py        # Interactive debugging
+│   └── train_mappo.py           # MAPPO training example
+├── tests/                       # Unit tests
+├── pyproject.toml
 ├── README_CN.md                 # 简体中文
 ├── README_JP.md                 # 日本語
 ├── README_TW.md                 # 繁體中文
