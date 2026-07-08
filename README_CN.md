@@ -13,11 +13,12 @@
 
 ## 概述
 
-SWMMEnv 将 EPA SWMM 水力模拟封装为 PettingZoo 兼容的多智能体 RL 环境。SWMM 模型中的每个泵站、闸门和堰坝都成为一个可控制的 RL 智能体
+SWMMEnv 将 EPA SWMM 水力模拟封装为 PettingZoo 兼容且 RLlib 原生的多智能体 RL 环境。SWMM 模型中的每个泵站、闸门和堰坝都成为一个可控制的 RL 智能体
 
 ## 功能特性
 
 - **PettingZoo ParallelEnv API** — 无缝对接 MARLlib、RLlib、Tianshou 等框架
+- **RLlib MultiAgentEnv API** — 直接传类名即可，无需手动编写适配器
 - **配置驱动** — 更换 SWMM 模型无需修改代码
 - **多种智能体类型** — 泵站、闸门、堰坝，连续控制 `[0, 1]`
 - **时间同步** — 将 RL 决策间隔与 SWMM 路由步长解耦
@@ -43,6 +44,8 @@ pip install "swmmEnv[marl]"
 pip install "swmmEnv[dev]"
 ```
 
+> `ray[rllib]` 是**可选**依赖。你可以在没有安装 ray 的情况下导入 `SWMMMultiAgentEnv`，但要实例化该类时必须安装 ray。
+
 ## 快速开始
 
 ### 基本用法（PettingZoo API）
@@ -63,6 +66,52 @@ observations, info = env.reset()
 actions = {agent: env.action_space(agent).sample() for agent in env.agents}
 observations, rewards, terminations, truncations, infos = env.step(actions)
 
+env.close()
+```
+
+### RLlib API（SWMMMultiAgentEnv）
+
+`SWMMMultiAgentEnv` 将 `SWMMParallelEnv` 封装为 RLlib 兼容的 `MultiAgentEnv`。直接传类名即可，无需工厂函数或手动适配器。
+
+**直接传类名**（RLlib 2.x+）：
+
+```python
+from swmmEnv import SWMMMultiAgentEnv
+from ray.rllib.algorithms.ppo import PPOConfig
+
+config = (
+    PPOConfig()
+    .environment(
+        SWMMMultiAgentEnv,                          # 直接传类
+        env_config={"config_path": "configs/control.yaml"},
+    )
+    .multi_agent(
+        policies={"shared_policy": None},
+        policy_mapping_fn=lambda agent_id: "shared_policy",
+    )
+)
+algo = config.build()
+```
+
+**通过 register_env**（经典模式）：
+
+```python
+from ray.tune.registry import register_env
+from swmmEnv.envs.register_env import make_rllib_env
+
+register_env("swmm_env", lambda cfg: make_rllib_env(config_path="configs/control.yaml"))
+```
+
+**直接实例化**（测试 / 调试）：
+
+```python
+from swmmEnv import SWMMMultiAgentEnv
+import numpy as np
+
+env = SWMMMultiAgentEnv({"config_path": "configs/control.yaml"})
+obs, info = env.reset()
+actions = {aid: np.array([0.5]) for aid in env.possible_agents}
+obs, rewards, terms, truncs, infos = env.step(actions)
 env.close()
 ```
 
@@ -414,6 +463,51 @@ obs, rewards, terminations, truncations, infos = env.step(actions)
 | `observation_spaces` | dict | 每个智能体的观测空间 |
 | `action_spaces` | dict | 每个智能体的动作空间 |
 
+### `SWMMMultiAgentEnv(env_config)`
+
+RLlib 兼容的 `MultiAgentEnv`，封装 `SWMMParallelEnv`。继承自 `ray.rllib.env.MultiAgentEnv`。
+
+```python
+from swmmEnv import SWMMMultiAgentEnv
+
+env = SWMMMultiAgentEnv({"config_path": "configs/control.yaml"})
+obs, infos = env.reset()
+obs, rewards, terms, truncs, infos = env.step(actions)
+```
+
+`env_config` 接受两种形式：
+- `{"config_path": "/path/to/config.yaml"}` — RLlib 风格；解析并加载 YAML 文件
+- `{"inp_file": ..., "agents": ..., ...}` — 完整配置字典，直接透传
+
+**核心方法：**
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `reset` | `(*, seed, options) -> (obs, infos)` | 开始新 episode |
+| `step` | `(action_dict) -> (obs, rewards, terms, truncs, infos)` | 推进环境；`terms`/`truncs` 包含 `__all__` 键 |
+| `close` | `() -> None` | 释放模拟资源 |
+| `render` | `(mode) -> None` | 打印当前环境状态 |
+
+**核心属性：**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `possible_agents` | list | 所有智能体 ID（替代已弃用的 `get_agent_ids()`） |
+| `observation_space` | `spaces.Dict` | 字典映射 agent ID → `Box`（兼容旧 API） |
+| `action_space` | `spaces.Dict` | 字典映射 agent ID → `Box`（兼容旧 API） |
+| `observation_spaces` | dict | 每个智能体的观测空间（新 API） |
+| `action_spaces` | dict | 每个智能体的动作空间（新 API） |
+
+### `make_rllib_env(config_path)`
+
+`swmmEnv.envs.register_env` 中的便捷工厂函数：
+
+```python
+from swmmEnv.envs.register_env import make_rllib_env
+
+env = make_rllib_env("configs/control.yaml")
+```
+
 ### `SWMMEnv(config)`
 
 核心 MDP 环境，独立于 PettingZoo。被 `SWMMParallelEnv` 内部使用。
@@ -542,6 +636,56 @@ validate_config(config)  # 配置无效时抛出 ValueError
 
 ## 训练
 
+### RLlib 直接集成（推荐 — 新 API）
+
+使用 `SWMMMultiAgentEnv` 最简单的方式：直接传递给 `PPOConfig().environment()`。
+
+```python
+from swmmEnv import SWMMMultiAgentEnv
+from ray.rllib.algorithms.ppo import PPOConfig
+
+algo = (
+    PPOConfig()
+    .environment(
+        SWMMMultiAgentEnv,
+        env_config={"config_path": "configs/control.yaml"},
+    )
+    .multi_agent(
+        policies={"shared_policy": None},
+        policy_mapping_fn=lambda agent_id: "shared_policy",
+    )
+    .training(lr=0.0005, gamma=0.99, train_batch_size=4000)
+    .resources(num_gpus=0)
+).build()
+
+for i in range(10):
+    result = algo.train()
+    print(f"Iteration {i}: "
+          f"reward_mean={result['episode_reward_mean']:.2f}, "
+          f"timesteps={result['timesteps_total']}")
+```
+
+### Ray RLlib（经典 register_env 模式）
+
+```python
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.tune.registry import register_env
+from swmmEnv.envs.register_env import make_rllib_env
+
+register_env("swmm_env", lambda cfg: make_rllib_env(config_path="configs/control.yaml"))
+
+algo = (
+    PPOConfig()
+    .environment("swmm_env")
+    .multi_agent(
+        policies={"shared_policy": None},
+        policy_mapping_fn=lambda agent_id: "shared_policy",
+    )
+    .training(lr=0.0005, gamma=0.99, train_batch_size=4000)
+    .resources(num_gpus=0)
+).build()
+```
+
 ### MARLlib 集成（推荐）
 
 SWMMEnv 通过独立的注册机制与 [MARLlib](https://github.com/Replicable-MARL/MARLlib) 集成。
@@ -601,46 +745,6 @@ env = make_env(map_name="control", worker_index=0)
 
 `make_env` 始终加载配置时**不合并默认配置**，避免默认配置的占位智能体导致的冲突。
 
-### Ray RLlib（直接集成）
-
-你也可以绕过 MARLlib，直接使用 Ray RLlib 训练：
-
-```python
-from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env import ParallelPettingZooEnv
-from ray.tune.registry import register_env
-import ray
-from swmmEnv import SWMMParallelEnv, load_config
-
-ray.init(ignore_reinit_error=True)
-
-def env_creator(env_config):
-    config = load_config("config/example.yaml")
-    config.update(env_config)
-    return SWMMParallelEnv(config)
-
-register_env("swmm_env", env_creator)
-
-algo = (
-    PPOConfig()
-    .environment("swmm_env")
-    .multi_agent(
-        policies={"shared_policy": None},
-        policy_mapping_fn=lambda agent_id: "shared_policy",
-    )
-    .training(lr=0.0005, gamma=0.99, train_batch_size=4000)
-    .resources(num_gpus=0)
-).build()
-
-for i in range(10):
-    result = algo.train()
-    print(f"Iteration {i}: "
-          f"reward_mean={result['episode_reward_mean']:.2f}, "
-          f"timesteps={result['timesteps_total']}")
-
-ray.shutdown()
-```
-
 ### 并行 Worker 训练
 
 SWMMEnv 支持分布式训练的并行环境工作节点。每个 worker 获得一个隔离的 `.inp` 文件副本，防止文件锁冲突：
@@ -683,8 +787,9 @@ swmmEnv/
 │   ├── envs/                    # 环境模块
 │   │   ├── swmm_env/
 │   │   │   ├── env.py           # 核心 MDP 环境
-│   │   │   └── pettingzoo_env.py # PettingZoo ParallelEnv 封装
-│   │   └── register_env.py      # MARLlib 注册辅助函数
+│   │   │   ├── pettingzoo_env.py # PettingZoo ParallelEnv 封装
+│   │   │   └── rllib_env.py     # RLlib MultiAgentEnv 适配器
+│   │   └── register_env.py      # MARLlib / RLlib 注册辅助函数
 │   ├── reward/                  # 奖励模块
 │   │   ├── default_reward.py    # 内置奖励函数集合
 │   │   └── custom_reward.py     # 自定义奖励模板
@@ -784,3 +889,4 @@ pytest tests/ --cov=swmmEnv --cov-report=term-missing
 | 环境重置速度慢 | 未使用热启动文件 | Worker 会自动创建热启动；检查 `_initial_hotstart` 是否已设置 |
 | `RuntimeError: Environment must be reset before stepping` | `step()` 前未调用 `reset()` | 确保先调用 `env.reset()` |
 | 并发模拟崩溃 | 多个 PySWMM 实例使用同一 `.inp` | 为每个 worker 设置 `worker_index > 0` 以获得隔离的 `.inp` 副本 |
+| 实例化 `SWMMMultiAgentEnv` 时报 `ImportError: ray[rllib] is required` | 未安装 ray | 运行 `pip install "swmmEnv[marl]"` 或 `pip install ray[rllib]` |
