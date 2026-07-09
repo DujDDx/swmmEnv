@@ -61,14 +61,13 @@ class SWMMMultiAgentEnv(_MultiAgentEnv):
     """
 
     def __init__(self, env_config: Dict[str, Any]):
-        super().__init__()
 
         # --- Handle RLlib-style env_config wrapper ---------------------------
         # RLlib may pass {"config_path": "..."} when configured via the
         # algorithm builder.  Resolve it to a full config dict here so the
         # caller doesn't have to.
         if isinstance(env_config, dict) and "config_path" in env_config:
-            env_config = load_config(env_config["config_path"])
+            env_config = load_config(env_config["config_path"],merge_defaults=False)
 
         self._env_config = env_config
 
@@ -78,7 +77,7 @@ class SWMMMultiAgentEnv(_MultiAgentEnv):
 
         self._pz_env = SWMMParallelEnv(env_config)
         self._agent_ids: List[str] = list(self._pz_env.possible_agents)
-
+        super().__init__()
         # --- Build per-agent spaces (new RLlib API stack) --------------------
         self.observation_spaces: Dict[str, spaces.Space] = {
             aid: self._pz_env.observation_spaces[aid] for aid in self._agent_ids
