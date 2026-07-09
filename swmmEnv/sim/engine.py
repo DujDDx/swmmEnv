@@ -103,11 +103,6 @@ class SWMMEngine:
             'decision_interval', 300
         )
 
-        # Hotstart file management
-        self.hotstart_file = config.get('hotstart_file', None)
-        self._initial_hotstart = None  # Saved initial state
-        self._hotstart_created = False
-
         # Simulation tracking
         self._is_started = False
         self._step_count = 0
@@ -163,53 +158,11 @@ class SWMMEngine:
             # Register in active simulations
             self._active_simulations[self.worker_index] = self.sim
 
-            # Create initial hotstart if not provided
-            if self.hotstart_file is None and not self._hotstart_created:
-                # Save initial state for efficient reset
-                self._create_initial_hotstart()
-
-            # Use hotstart file if provided
-            if self.hotstart_file and os.path.exists(self.hotstart_file):
-                self.sim.use_hotstart(self.hotstart_file)
-
             self._is_started = True
             self._step_count = 0
 
             # Initial step to get first observation
             next(self.sim)
-
-    def _create_initial_hotstart(self) -> None:
-        """
-        Create initial hotstart file for efficient resets.
-
-        This saves the simulation state at step 0, allowing fast
-        episode resets without recreating the simulation.
-        """
-        if self._worker_dir:
-            hotstart_path = os.path.join(
-                self._worker_dir,
-                f"initial_state_{self.worker_index}.hsf"
-            )
-        else:
-            hotstart_path = os.path.join(
-                tempfile.gettempdir(),
-                f"swmm_initial_{self.worker_index}.hsf"
-            )
-
-        try:
-            # Run initial warmup if needed
-            warmup = self.config.get('warmup_steps', 0)
-            if warmup > 0:
-                for _ in range(warmup):
-                    next(self.sim)
-
-            # Save initial state
-            self.sim.save_hotstart(hotstart_path)
-            self._initial_hotstart = hotstart_path
-            self._hotstart_created = True
-        except Exception as e:
-            print(f"Warning: Could not create hotstart file: {e}")
-            self._initial_hotstart = None
 
     def step(self) -> None:
         """
@@ -229,61 +182,28 @@ class SWMMEngine:
 
     def reset(self) -> None:
         """
-        Reset simulation to initial state efficiently.
+        Reset simulation by closing and restarting from the .inp file.
 
-        Uses hotstart file for fast reset without recreating simulation.
-        This is much faster than closing and restarting simulation.
+        Always recreates the Simulation object rather than using hotstart,
+        because ``sim.use_hotstart()`` hangs indefinitely when the simulation
+        has exhausted its rainfall time series (``next(self.sim)`` raises
+        ``StopIteration``).  This would deadlock ``algo.train()`` after the
+        first episode.
 
-        EFFICIENCY:
-        - Uses saved hotstart file instead of recreating simulation
-        - Only recreates simulation if hotstart is unavailable
+        The close-then-start approach is slower but guarantees reliability
+        across episode boundaries.
         """
-        # Prefer using hotstart for efficiency
-        if self._initial_hotstart and os.path.exists(self._initial_hotstart):
-            # Efficient reset using hotstart
-            self._reset_with_hotstart()
-        elif self.hotstart_file and os.path.exists(self.hotstart_file):
-            # Use provided hotstart file
-            self._reset_with_hotstart()
-        else:
-            # Fallback: recreate simulation
-            self.close()
-            self.start()
-
-    def _reset_with_hotstart(self) -> None:
-        """
-        Reset simulation using hotstart file (fast).
-
-        This avoids recreating the simulation object, significantly
-        improving reset efficiency for RL training.
-        """
-        if not self._is_started:
-            self.start()
-            return
-
-        hotstart_file = self._initial_hotstart or self.hotstart_file
-
-        with self._global_lock:
-            try:
-                # Load hotstart state
-                self.sim.use_hotstart(hotstart_file)
-                self._step_count = 0
-                self._pending_actions = {}
-
-                # Reset agent references (nodes/links still valid)
-                # They persist across hotstart loads
-
-            except Exception as e:
-                # Fallback to recreate if hotstart fails
-                print(f"Warning: Hotstart reset failed: {e}, recreating simulation")
-                self.close()
-                self.start()
+        self.close()
+        self.start()
 
     def close(self) -> None:
         """
-        Close simulation and release resources.
+        Close simulation and release PySWMM resources.
 
-        Cleans up worker-specific files and removes from active simulations.
+        Does NOT delete the worker's temporary inp-file copy so that
+        ``reset()`` (which calls ``close()`` then ``start()``) can
+        re-open it.  Worker-directory cleanup is deferred to
+        ``_cleanup_worker_dir()``, which is called from ``__exit__``.
         """
         with self._global_lock:
             if self.sim is not None:
@@ -307,7 +227,8 @@ class SWMMEngine:
         self._step_count = 0
         self._pending_actions = {}
 
-        # Clean up worker directory if created
+    def _cleanup_worker_dir(self) -> None:
+        """Remove the worker-specific temporary directory, if any."""
         if self._worker_dir and os.path.exists(self._worker_dir):
             try:
                 shutil.rmtree(self._worker_dir)
@@ -478,7 +399,11 @@ class SWMMEngine:
 
     def save_hotstart(self, filepath: str) -> None:
         """
-        Save current state to hotstart file.
+        Save current state to a hotstart file (.hsf).
+
+        Useful for manual checkpointing during long-running simulations.
+        Note: hotstart is no longer used internally by ``reset()``
+        (see its docstring for rationale).
 
         Args:
             filepath: Path to save hotstart file (.hsf)
@@ -487,7 +412,6 @@ class SWMMEngine:
             raise RuntimeError("Simulation not started")
 
         self.sim.save_hotstart(filepath)
-        self.hotstart_file = filepath
 
     # Internal callback methods
 
@@ -518,6 +442,7 @@ class SWMMEngine:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
+        """Context manager exit — release simulation and temp files."""
         self.close()
+        self._cleanup_worker_dir()
         return False
