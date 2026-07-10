@@ -801,9 +801,10 @@ swmmEnv/
 │   └── train_mappo.py           # MAPPO 训练示例
 ├── tests/                       # 单元测试
 ├── pyproject.toml
-├── README.md                    # 英文文档
-├── README_JP.md                 # 日本語ドキュメント
-└── README_TW.md                 # 繁體中文文档
+├── README_CN_simplified.md       # 简体中文文档（本文件）
+├── README_CN_traditional.md      # 繁體中文文档
+├── README_JP.md                  # 日本語ドキュメント
+└── README.md                     # 英文文档
 ```
 
 ## 环境要求

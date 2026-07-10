@@ -354,9 +354,9 @@ swmmEnv/
 ├── tests/                       # 単体テスト
 ├── pyproject.toml
 ├── README.md                    # 英語ドキュメント
-├── README_CN.md                 # 中国語ドキュメント
-├── README_JP.md                 # 日本語ドキュメント（本ファイル）
-└── README_TW.md                 # 繁体字中国語ドキュメント
+├── README_CN_simplified.md      # 簡体字中国語ドキュメント
+├── README_CN_traditional.md     # 繁体字中国語ドキュメント
+└── README_JP.md                 # 日本語ドキュメント（本ファイル）
 ```
 
 ## 環境要件

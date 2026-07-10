@@ -205,8 +205,8 @@ engine = env.core_env.engine
 for node_id in ["J1", "J2"]:
     node_state = engine.get_node_state(node_id)
     print(f"\nNode {node_id}: depth={node_state['depth']:.2f}m, "
-          f"flooding={node_state['flooding']:.4f} m鲁/s, "
-          f"inflow={node_state['total_inflow']:.2f} m鲁/s")
+          f"flooding={node_state['flooding']:.4f} m³/s, "
+          f"inflow={node_state['total_inflow']:.2f} m³/s")
 
 env.close()
 ```
@@ -295,7 +295,7 @@ max_steps: 1000
 | gate | 4 | upstream depth, downstream depth, setting, rainfall |
 | weir | 4 | upstream depth, downstream depth, setting, rainfall |
 
-- **Observation space**: `Box(-鈭? +鈭?` after z-score normalization
+- **Observation space**: `Box(-∞, +∞)` after z-score normalization
 - **Action space**: `Box(0, 1)` continuous control setting
 
 All agents share a **global reward** (coupled drainage system).
@@ -452,8 +452,8 @@ obs, rewards, terms, truncs, infos = env.step(actions)
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `possible_agents` | list | All agent IDs (replaces deprecated `get_agent_ids()`) |
-| `observation_space` | `spaces.Dict` | Dict mapping agent ID 鈫?`Box` (legacy OldAPIStack) |
-| `action_space` | `spaces.Dict` | Dict mapping agent ID 鈫?`Box` (legacy OldAPIStack) |
+| `observation_space` | `spaces.Dict` | Dict mapping agent ID → `Box` (legacy OldAPIStack) |
+| `action_space` | `spaces.Dict` | Dict mapping agent ID → `Box` (legacy OldAPIStack) |
 | `observation_spaces` | dict | Per-agent observation spaces (new API stack) |
 | `action_spaces` | dict | Per-agent action spaces (new API stack) |
 
@@ -515,7 +515,7 @@ engine.close()
 | `get_node_state(node_id)` | Get depth, head, volume, flooding, inflow for a node |
 | `get_link_state(link_id)` | Get flow, depth, volume, current_setting for a link |
 | `get_rainfall(gage_id)` | Get rainfall intensity (mm/h) from a rain gage |
-| `get_total_flooding()` | Get total flooding rate across all nodes (m鲁/s) |
+| `get_total_flooding()` | Get total flooding rate across all nodes (m³/s) |
 | `get_system_stats()` | Get routing and runoff statistics |
 | `is_ended()` | Check if the simulation has reached its end time |
 | `get_current_time()` | Get current simulation datetime |
@@ -762,10 +762,10 @@ swmmEnv/
 │   └── train_mappo.py           # MAPPO training example
 ├── tests/                       # Unit tests
 ├── pyproject.toml
-├── README_CN.md                 # 简体中文
-├── README_JP.md                 # 日本語
-├── README_TW.md                 # 繁體中文
-└── README.md                    # English
+├── README_CN_simplified.md       # 简体中文
+├── README_CN_traditional.md      # 繁體中文
+├── README_JP.md                  # 日本語
+└── README.md                     # English
 ```
 
 
