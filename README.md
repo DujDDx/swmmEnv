@@ -1,4 +1,4 @@
-﻿# SWMMEnv
+# SWMMEnv
 [![python swimming](assets/pythonSwimming.jpg)](https://martinparr.com/)
 <p align="center">
   <a href="https://pypi.org/project/swmmEnv"><img src="https://img.shields.io/pypi/v/swmmEnv?color=blue" alt="PyPI"></a>
@@ -17,14 +17,14 @@ SWMMEnv wraps EPA SWMM hydraulic simulations as a PettingZoo-compatible and RLli
 
 ## Features
 
-- **PettingZoo ParallelEnv API** 鈥?drop-in compatible with MARLlib, RLlib, Tianshou
-- **RLlib MultiAgentEnv API** 鈥?pass class reference directly, no manual adapter needed
-- **Config-driven** 鈥?swap SWMM models without changing code
-- **Flexible agent types** 鈥?pumps, gates, weirs with continuous control `[0, 1]`
-- **Time synchronization** 鈥?decouples RL decision interval from SWMM routing step
-- **State normalization** 鈥?z-score or min-max normalization for stable training
-- **Custom reward functions** 鈥?pluggable reward with flooding, level-deviation, and energy components
-- **Parallel worker support** 鈥?isolated `.inp` copies for safe multi-worker training
+- **PettingZoo ParallelEnv API** —drop-in compatible with MARLlib, RLlib, Tianshou
+- **RLlib MultiAgentEnv API** —pass class reference directly, no manual adapter needed
+- **Config-driven** —swap SWMM models without changing code
+- **Flexible agent types** —pumps, gates, weirs with continuous control `[0, 1]`
+- **Time synchronization** —decouples RL decision interval from SWMM routing step
+- **State normalization** —z-score or min-max normalization for stable training
+- **Custom reward functions** —pluggable reward with flooding, level-deviation, and energy components
+- **Parallel worker support** —isolated `.inp` copies for safe multi-worker training
 
 ## Installation
 
@@ -71,7 +71,7 @@ env.close()
 
 ### RLlib API (SWMMMultiAgentEnv)
 
-`SWMMMultiAgentEnv` wraps `SWMMParallelEnv` into an RLlib-compatible `MultiAgentEnv`. Pass the class reference directly 鈥?no factory function or manual adapter needed.
+`SWMMMultiAgentEnv` wraps `SWMMParallelEnv` into an RLlib-compatible `MultiAgentEnv`. Pass the class reference directly —no factory function or manual adapter needed.
 
 **Direct class reference** (RLlib 2.x+):
 
@@ -435,8 +435,8 @@ obs, rewards, terms, truncs, infos = env.step(actions)
 ```
 
 `env_config` accepts two forms:
-- `{"config_path": "/path/to/config.yaml"}` 鈥?RLlib-style; resolves and loads the YAML file
-- `{"inp_file": ..., "agents": ..., ...}` 鈥?full config dict passed through directly
+- `{"config_path": "/path/to/config.yaml"}` —RLlib-style; resolves and loads the YAML file
+- `{"inp_file": ..., "agents": ..., ...}` —full config dict passed through directly
 
 **Key methods:**
 
@@ -596,7 +596,7 @@ validate_config(config)  # Raises ValueError on invalid config
 
 ## Training
 
-### RLlib Direct Integration (Recommended 鈥?New API)
+### RLlib Direct Integration (Recommended —New API)
 
 The simplest way to use SWMMEnv with RLlib: pass `SWMMMultiAgentEnv` directly to `PPOConfig().environment()`.
 
