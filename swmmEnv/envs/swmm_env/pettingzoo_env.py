@@ -10,7 +10,7 @@ RLlib COMPATIBILITY:
 - Returns correct types from step() for RLlib wrappers
 """
 
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, Union
 import numpy as np
 
 try:
@@ -75,6 +75,11 @@ class SWMMParallelEnv(ParallelEnv):
         # Copy config for reference
         self.config = config
 
+        # Parse action space configuration
+        action_cfg = config.get('action_space', {})
+        self.action_space_type = action_cfg.get('type', 'continuous')
+        self.action_space_params = action_cfg  # keep full dict for _setup_spaces
+
         # Agents (from core env)
         self.agents = self.core_env.agents.copy()
         self.possible_agents = self.core_env.possible_agents.copy()
@@ -87,7 +92,7 @@ class SWMMParallelEnv(ParallelEnv):
 
     def _setup_spaces(self) -> None:
         """
-        Define observation and action spaces for each agent.
+        Define observation and action spaces for each agent based on config.
         """
         self.observation_spaces = {}
         self.action_spaces = {}
@@ -105,13 +110,18 @@ class SWMMParallelEnv(ParallelEnv):
                 dtype=np.float32
             )
 
-            # Action space: continuous control setting [0, 1]
-            self.action_spaces[agent_id] = spaces.Box(
-                low=0.0,
-                high=1.0,
-                shape=(1,),
-                dtype=np.float32
-            )
+            # Action space: configurable via config['action_space']
+            cfg = self.action_space_params
+            if cfg.get('type', 'continuous') == 'discrete':
+                n = cfg.get('n', 11)
+                self.action_spaces[agent_id] = spaces.Discrete(n)
+            else:
+                low = cfg.get('low', 0.0)
+                high = cfg.get('high', 1.0)
+                shape = tuple(cfg.get('shape', [1]))
+                self.action_spaces[agent_id] = spaces.Box(
+                    low=low, high=high, shape=shape, dtype=np.float32
+                )
 
     def observation_space(self, agent: str) -> spaces.Box:
         """
@@ -127,7 +137,7 @@ class SWMMParallelEnv(ParallelEnv):
             raise ValueError(f"Unknown agent: {agent}")
         return self.observation_spaces[agent]
 
-    def action_space(self, agent: str) -> spaces.Box:
+    def action_space(self, agent: str) -> Union[spaces.Box, spaces.Discrete]:
         """
         Get action space for a specific agent (RLlib-compatible).
 
@@ -135,7 +145,8 @@ class SWMMParallelEnv(ParallelEnv):
             agent: Agent identifier
 
         Returns:
-            Action space (Box) for the specified agent
+            Action space (Box for continuous, Discrete for discrete)
+            for the specified agent
         """
         if agent not in self.action_spaces:
             raise ValueError(f"Unknown agent: {agent}")

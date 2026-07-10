@@ -88,6 +88,14 @@ class TestSWMMParallelEnv:
         mock_core_env.agents = ['pump_1', 'gate_1']
         mock_core_env.possible_agents = ['pump_1', 'gate_1']
 
+        # SWMMEnv.OBS_DIMS is accessed as a class attribute in _setup_spaces,
+        # so the mock class needs to expose the real dict.
+        mock_core_env_class.OBS_DIMS = {
+            'pump': 5,
+            'gate': 4,
+            'weir': 4,
+        }
+
         mock_core_env_class.return_value = mock_core_env
 
         env = SWMMParallelEnv(config)

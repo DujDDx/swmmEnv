@@ -68,6 +68,15 @@ target_levels:
   J1: 1.5
   J2: 1.0
 
+# Action space configuration (optional, defaults to continuous [0, 1])
+# Uncomment and configure as needed:
+# action_space:
+#   type: continuous   # continuous | discrete
+#   low: 0.0
+#   high: 1.0
+#   shape: [1]
+#   n: 11              # (discrete only) number of discrete actions
+
 # Episode configuration
 max_steps: 1000
 warmup_steps: 0  # Steps to run before episode starts

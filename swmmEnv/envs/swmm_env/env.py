@@ -55,6 +55,8 @@ class SWMMEnv:
                 - agents: Agent configuration
                 - time_sync: Time synchronization parameters
                 - normalization: Normalization parameters
+                - action_space: Action space configuration (optional,
+                  defaults to continuous [0, 1])
                 - reward_fn: Reward function name or callable
                 - max_steps: Maximum episode steps
                 - obs_nodes: Nodes to observe
@@ -106,6 +108,11 @@ class SWMMEnv:
         self.obs_nodes = config.get('obs_nodes', [])
         self.obs_raingage = config.get('obs_raingage', None)
 
+        # Action space configuration
+        action_cfg = config.get('action_space', {})
+        self.action_space_type = action_cfg.get('type', 'continuous')
+        self.action_space_n = action_cfg.get('n', 11)  # discrete action count
+
     def reset(self) -> Dict[str, np.ndarray]:
         """
         Reset environment for new episode.
@@ -146,8 +153,10 @@ class SWMMEnv:
         Execute one RL step.
 
         Args:
-            action_dict: Dictionary mapping agent_id to action value
-                        (0.0 to 1.0 for pump/gate/weir settings)
+            action_dict: Dictionary mapping agent_id to action value.
+                For continuous: float in [0, 1].
+                For discrete: integer index mapped to evenly-spaced settings
+                (0 → 0.0, ..., n-1 → 1.0).
 
         Returns:
             Tuple of:
@@ -156,10 +165,13 @@ class SWMMEnv:
                 - done: Episode termination flag
                 - info: Additional information dict
         """
-        # Apply actions directly to simulation (no callback)
+        # Apply actions to simulation
         for agent_id, action in action_dict.items():
             if agent_id in self.agents:
-                # Clip action to valid range
+                # Map discrete action index to continuous [0, 1] setting
+                if self.action_space_type == 'discrete':
+                    action = float(action) / (self.action_space_n - 1.0)
+                # Clip to valid range
                 action = np.clip(action, 0.0, 1.0)
                 link_id = self.mapping.get_element_id(agent_id)
                 if link_id in self.engine.links:

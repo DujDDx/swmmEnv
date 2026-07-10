@@ -53,6 +53,43 @@ def load_config(
     return config
 
 
+def _validate_action_space(action_space: Dict[str, Any]) -> None:
+    """
+    Validate action space configuration.
+
+    Args:
+        action_space: Action space configuration dictionary
+
+    Raises:
+        ValueError: If configuration is invalid
+    """
+    action_type = action_space.get('type', 'continuous')
+
+    if action_type not in {'continuous', 'discrete'}:
+        raise ValueError(
+            f"Invalid action_space type '{action_type}'. "
+            f"Must be 'continuous' or 'discrete'"
+        )
+
+    if action_type == 'continuous':
+        low = action_space.get('low', 0.0)
+        high = action_space.get('high', 1.0)
+        if low >= high:
+            raise ValueError(
+                f"action_space.low ({low}) must be less than action_space.high ({high})"
+            )
+
+        shape = action_space.get('shape', [1])
+        if not isinstance(shape, list) or any(not isinstance(d, int) or d <= 0 for d in shape):
+            raise ValueError(f"action_space.shape must be a list of positive integers, got {shape}")
+    else:  # discrete
+        n = action_space.get('n', 11)
+        if not isinstance(n, int) or n < 2:
+            raise ValueError(
+                f"action_space.n must be an integer >= 2 for discrete action space, got {n}"
+            )
+
+
 def validate_config(config: Dict[str, Any]) -> None:
     """
     Validate configuration structure and values.
@@ -114,6 +151,10 @@ def validate_config(config: Dict[str, Any]) -> None:
 
     if 'reward' not in normalization:
         raise ValueError("Missing 'reward' in normalization")
+
+    # Validate action_space if provided
+    if 'action_space' in config:
+        _validate_action_space(config['action_space'])
 
     # Validate inp_file if provided
     if 'inp_file' in config:
