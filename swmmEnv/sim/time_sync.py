@@ -57,14 +57,33 @@ class TimeSync:
         Advance SWMM simulation by one RL decision interval.
 
         Executes skip_steps number of SWMM steps to advance by decision_interval.
+        Optimized to reduce Python↔C call overhead by inlining action application
+        and batch step counting, avoiding PySWMM callback mechanism.
 
         Args:
-            engine: SWMMEngine instance with step() method
+            engine: SWMMEngine instance with sim and links attributes
         """
-        for _ in range(self.skip_steps):
-            engine.step()
-            self._swmm_steps_executed += 1
+        sim = engine.sim
+        if sim is None:
+            return
 
+        # Inline action application (replaces before_step callback)
+        pending = engine._pending_actions
+        if pending:
+            links = engine.links
+            for link_id, setting in pending.items():
+                if link_id in links:
+                    links[link_id].target_setting = setting
+            pending.clear()
+
+        # Batch step execution (replaces for-loop with individual steps)
+        steps = self.skip_steps
+        for _ in range(steps):
+            next(sim)
+
+        # Batch step count update (replaces after_step callback)
+        engine._step_count += steps
+        self._swmm_steps_executed += steps
         self._rl_steps_executed += 1
 
     def should_act(self, current_swmm_step: int) -> bool:

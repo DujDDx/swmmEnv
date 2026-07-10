@@ -41,22 +41,34 @@ class TestTimeSync:
         """Test advance method."""
         ts = TimeSync(decision_interval=300, swmm_step=10)
 
-        # Mock engine with step method
+        # Mock engine with sim and links
+        mock_sim = MagicMock()  # Use MagicMock for iterator support
+        mock_sim.__iter__ = Mock(return_value=iter([None] * 100))  # Make it iterable
         mock_engine = Mock()
-        mock_engine.step = Mock()
+        mock_engine.sim = mock_sim
+        mock_engine._step_count = 0
+        mock_engine._pending_actions = {}
+        mock_engine.links = {}
 
         ts.advance(mock_engine)
 
-        # Should have called engine.step 30 times
-        assert mock_engine.step.call_count == 30
+        # Should have incremented step count by 30
+        assert mock_engine._step_count == 30
         assert ts.get_swmm_steps() == 30
         assert ts.get_rl_steps() == 1
 
     def test_advance_multiple_times(self):
         """Test multiple advances."""
         ts = TimeSync(decision_interval=300, swmm_step=10)
+
+        # Mock engine with sim and links
+        mock_sim = MagicMock()
+        mock_sim.__iter__ = Mock(return_value=iter([None] * 100))
         mock_engine = Mock()
-        mock_engine.step = Mock()
+        mock_engine.sim = mock_sim
+        mock_engine._step_count = 0
+        mock_engine._pending_actions = {}
+        mock_engine.links = {}
 
         ts.advance(mock_engine)
         ts.advance(mock_engine)
@@ -81,8 +93,15 @@ class TestTimeSync:
     def test_reset(self):
         """Test reset method."""
         ts = TimeSync(decision_interval=300, swmm_step=10)
+
+        # Mock engine with sim and links
+        mock_sim = MagicMock()
+        mock_sim.__iter__ = Mock(return_value=iter([None] * 100))
         mock_engine = Mock()
-        mock_engine.step = Mock()
+        mock_engine.sim = mock_sim
+        mock_engine._step_count = 0
+        mock_engine._pending_actions = {}
+        mock_engine.links = {}
 
         ts.advance(mock_engine)
         assert ts.get_rl_steps() == 1
@@ -95,8 +114,15 @@ class TestTimeSync:
     def test_get_elapsed_time(self):
         """Test elapsed time calculation."""
         ts = TimeSync(decision_interval=300, swmm_step=10)
+
+        # Mock engine with sim and links
+        mock_sim = MagicMock()
+        mock_sim.__iter__ = Mock(return_value=iter([None] * 100))
         mock_engine = Mock()
-        mock_engine.step = Mock()
+        mock_engine.sim = mock_sim
+        mock_engine._step_count = 0
+        mock_engine._pending_actions = {}
+        mock_engine.links = {}
 
         ts.advance(mock_engine)
 
@@ -121,7 +147,7 @@ class TestTimeSync:
         assert 'swmm_step=10' in repr_str
 
 
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 
 if __name__ == '__main__':

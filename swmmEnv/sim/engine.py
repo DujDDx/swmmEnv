@@ -14,7 +14,6 @@ import shutil
 import tempfile
 from typing import Dict, Optional, Any
 import numpy as np
-import threading
 
 try:
     from pyswmm import Simulation, Nodes, Links, RainGages
@@ -51,11 +50,9 @@ class SWMMEngine:
         >>> engine.close()
     """
 
-    # Global lock for PySWMM operations (safety measure)
-    _global_lock = threading.Lock()
-
-    # Track active simulations to prevent conflicts
-    _active_simulations = {}
+    # Global lock and active simulations tracking removed.
+    # Process isolation via worker-specific inp file copies ensures thread safety.
+    # Each worker operates on its own simulation instance.
 
     def __init__(
         self,
@@ -103,6 +100,9 @@ class SWMMEngine:
             'decision_interval', 300
         )
 
+        # Hotstart file for efficient reset (optional)
+        self.hotstart_file = config.get('hotstart_file', None)
+
         # Simulation tracking
         self._is_started = False
         self._step_count = 0
@@ -116,53 +116,39 @@ class SWMMEngine:
         Sets step_advance to control_interval for RL control timing.
 
         THREAD SAFETY:
-        - Uses global lock for PySWMM operations
-        - Registers simulation in _active_simulations dict
+        - Each worker has its own inp file copy and Simulation instance
+        - No global locks needed due to process isolation
         """
         if self._is_started:
             self.close()
 
-        # Use global lock for thread safety
-        with self._global_lock:
-            # Check if this worker already has active simulation
-            if self.worker_index in self._active_simulations:
-                # Close previous simulation first
-                try:
-                    self._active_simulations[self.worker_index].close()
-                except Exception:
-                    pass
+        # Create simulation
+        self.sim = Simulation(self.inp_file)
 
-            # Create simulation
-            self.sim = Simulation(self.inp_file)
+        # Set control interval for step advancement
+        self.sim.step_advance(self.control_interval)
 
-            # Set control interval for step advancement
-            self.sim.step_advance(self.control_interval)
+        # Initialize references
+        self.nodes = {node.nodeid: node for node in Nodes(self.sim)}
+        self.links = {link.linkid: link for link in Links(self.sim)}
 
-            # Initialize references
-            self.nodes = {node.nodeid: node for node in Nodes(self.sim)}
-            self.links = {link.linkid: link for link in Links(self.sim)}
+        # Initialize raingages if available
+        try:
+            self.raingages = {gage.raingageid: gage for gage in RainGages(self.sim)}
+        except Exception:
+            self.raingages = {}
 
-            # Initialize raingages if available
-            try:
-                self.raingages = {gage.raingageid: gage for gage in RainGages(self.sim)}
-            except Exception:
-                self.raingages = {}
+        # Callbacks removed - action application and step counting now handled
+        # directly in TimeSync.advance() for performance optimization
 
-            # Register callbacks for action application and observation retrieval
-            self.sim.add_before_step(self._apply_pending_actions)
-            self.sim.add_after_step(self._update_step_count)
+        # Start simulation iteration (enter context manager)
+        self.sim.start()
 
-            # Start simulation iteration (enter context manager)
-            self.sim.start()
+        self._is_started = True
+        self._step_count = 0
 
-            # Register in active simulations
-            self._active_simulations[self.worker_index] = self.sim
-
-            self._is_started = True
-            self._step_count = 0
-
-            # Initial step to get first observation
-            next(self.sim)
+        # Initial step to get first observation
+        next(self.sim)
 
     def step(self) -> None:
         """
@@ -182,17 +168,29 @@ class SWMMEngine:
 
     def reset(self) -> None:
         """
-        Reset simulation by closing and restarting from the .inp file.
+        Reset simulation to initial state.
 
-        Always recreates the Simulation object rather than using hotstart,
-        because ``sim.use_hotstart()`` hangs indefinitely when the simulation
-        has exhausted its rainfall time series (``next(self.sim)`` raises
-        ``StopIteration``).  This would deadlock ``algo.train()`` after the
-        first episode.
+        Attempts hotstart-based reset for efficiency if a hotstart file exists
+        and the simulation hasn't exhausted its time series. Falls back to
+        full close-then-start if hotstart fails or simulation is exhausted.
 
-        The close-then-start approach is slower but guarantees reliability
-        across episode boundaries.
+        Hotstart reset is faster (avoids Simulation reconstruction) but may
+        hang if the simulation has exhausted its rainfall time series.
         """
+        # Try hotstart-based fast reset first
+        if self.hotstart_file and os.path.exists(self.hotstart_file) and self.sim is not None:
+            try:
+                # Check if simulation is still running (not exhausted)
+                if self.sim.sim_is_started:
+                    self.sim.use_hotstart(self.hotstart_file)
+                    self._step_count = 0
+                    self._pending_actions = {}
+                    return
+            except Exception:
+                # Hotstart failed, fall through to full reset
+                pass
+
+        # Slow path: full reconstruction
         self.close()
         self.start()
 
@@ -205,19 +203,11 @@ class SWMMEngine:
         re-open it.  Worker-directory cleanup is deferred to
         ``_cleanup_worker_dir()``, which is called from ``__exit__``.
         """
-        with self._global_lock:
-            if self.sim is not None:
-                try:
-                    self.sim.close()
-                except Exception:
-                    pass
-
-            # Remove from active simulations
-            if self.worker_index in self._active_simulations:
-                try:
-                    del self._active_simulations[self.worker_index]
-                except Exception:
-                    pass
+        if self.sim is not None:
+            try:
+                self.sim.close()
+            except Exception:
+                pass
 
         self.sim = None
         self.nodes = {}

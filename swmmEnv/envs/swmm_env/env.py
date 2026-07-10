@@ -156,12 +156,14 @@ class SWMMEnv:
                 - done: Episode termination flag
                 - info: Additional information dict
         """
-        # Apply actions to simulation
+        # Apply actions directly to simulation (no callback)
         for agent_id, action in action_dict.items():
             if agent_id in self.agents:
                 # Clip action to valid range
                 action = np.clip(action, 0.0, 1.0)
-                self.engine.apply_action(agent_id, float(action))
+                link_id = self.mapping.get_element_id(agent_id)
+                if link_id in self.engine.links:
+                    self.engine.links[link_id].target_setting = float(action)
 
         # Advance simulation by decision interval
         self.time_sync.advance(self.engine)

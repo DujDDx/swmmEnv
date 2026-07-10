@@ -81,7 +81,16 @@ class TestSWMMEnv:
             'volume': 10.0,
             'current_setting': 0.5
         }
-        mock_engine.apply_action.return_value = None
+        # Mock links dict for direct action application
+        mock_link = Mock()
+        mock_engine.links = {'P1': mock_link, 'W1': mock_link}
+        mock_engine._pending_actions = {}
+        mock_engine._step_count = 0
+
+        # Mock sim as iterator for advance()
+        mock_sim = MagicMock()
+        mock_sim.__iter__ = Mock(return_value=iter([None] * 1000))
+        mock_engine.sim = mock_sim
 
         env = SWMMEnv(config)
 
@@ -149,8 +158,9 @@ class TestSWMMEnv:
         assert 'pump_1' in observations
         assert 'gate_1' in observations
 
-        # Check action was applied (with clipping)
-        env.engine.apply_action.assert_called()
+        # Check action was applied directly to link (last action value)
+        # Note: gate_1 maps to W1, and it's applied last
+        assert env.engine.links['W1'].target_setting == 0.5
 
     def test_step_clips_actions(self, env):
         """Test that step clips actions to [0, 1]."""
@@ -161,15 +171,14 @@ class TestSWMMEnv:
         env.step(actions)
 
         # Action should have been clipped to 1.0
-        called_args = env.engine.apply_action.call_args
-        assert called_args[0][1] == 1.0
+        assert env.engine.links['P1'].target_setting == 1.0
 
         # Test action below 0
         actions = {'pump_1': -0.5}
         env.step(actions)
 
-        called_args = env.engine.apply_action.call_args
-        assert called_args[0][1] == 0.0
+        # Action should have been clipped to 0.0
+        assert env.engine.links['P1'].target_setting == 0.0
 
     def test_step_termination(self, env):
         """Test step termination conditions."""
