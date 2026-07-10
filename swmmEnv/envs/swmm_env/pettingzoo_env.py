@@ -93,6 +93,10 @@ class SWMMParallelEnv(ParallelEnv):
     def _setup_spaces(self) -> None:
         """
         Define observation and action spaces for each agent based on config.
+
+        Action space is driven by config['action_space']:
+        - type == 'discrete' -> spaces.Discrete(n)
+        - type == 'continuous' (default) -> spaces.Box(low, high, shape)
         """
         self.observation_spaces = {}
         self.action_spaces = {}

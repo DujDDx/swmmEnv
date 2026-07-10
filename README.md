@@ -20,7 +20,7 @@ SWMMEnv wraps EPA SWMM hydraulic simulations as a PettingZoo-compatible and RLli
 - **PettingZoo ParallelEnv API** —drop-in compatible with MARLlib, RLlib, Tianshou
 - **RLlib MultiAgentEnv API** —pass class reference directly, no manual adapter needed
 - **Config-driven** —swap SWMM models without changing code
-- **Flexible agent types** —pumps, gates, weirs with continuous control `[0, 1]`
+- **Flexible agent types** —pumps, gates, weirs with configurable continuous or discrete control
 - **Time synchronization** —decouples RL decision interval from SWMM routing step
 - **State normalization** —z-score or min-max normalization for stable training
 - **Custom reward functions** —pluggable reward with flooding, level-deviation, and energy components
@@ -62,7 +62,7 @@ env = SWMMParallelEnv(config)
 # Reset
 observations, info = env.reset()
 
-# Step: each agent outputs a continuous action [0, 1]
+# Step: each agent outputs an action (continuous [0, 1] or discrete)
 actions = {agent: env.action_space(agent).sample() for agent in env.agents}
 observations, rewards, terminations, truncations, infos = env.step(actions)
 
@@ -285,6 +285,14 @@ normalization:
 
 reward_fn: "default_reward"
 max_steps: 1000
+
+# Action space (optional, defaults to continuous [0, 1])
+# action_space:
+#   type: continuous   # continuous | discrete
+#   low: 0.0
+#   high: 1.0
+#   shape: [1]
+#   n: 11              # (discrete only) number of discrete actions
 ```
 
 ## Agent Observation & Action Space
@@ -296,9 +304,44 @@ max_steps: 1000
 | weir | 4 | upstream depth, downstream depth, setting, rainfall |
 
 - **Observation space**: `Box(-∞, +∞)` after z-score normalization
-- **Action space**: `Box(0, 1)` continuous control setting
+- **Action space**: Configurable — continuous `Box(0, 1)` (default) or `Discrete(n)`. See [action space configuration](#action-space-configuration) for details.
 
 All agents share a **global reward** (coupled drainage system).
+
+## Action Space Configuration
+
+The action space type is controlled by the optional `action_space` config section. If omitted, the environment defaults to continuous `Box(0, 1, shape=(1,))`.
+
+### Continuous Action Space
+
+```yaml
+action_space:
+  type: continuous
+  low: 0.0
+  high: 1.0
+  shape: [1]
+```
+
+Each agent outputs a float in `[0, 1]`, applied directly as the SWMM element's target setting.
+
+### Discrete Action Space
+
+```yaml
+action_space:
+  type: discrete
+  n: 11
+```
+
+Each agent outputs an integer index `0, 1, ..., n-1`, which is mapped to evenly-spaced continuous values:
+
+```
+index 0 → target_setting 0.0
+index 1 → target_setting 0.1
+...
+index n-1 → target_setting 1.0
+```
+
+The underlying SWMM simulation always receives a continuous `[0, 1]` setting — discrete is a different input interface mapped to the same continuous control space.
 
 ## Reward Functions
 
@@ -405,7 +448,7 @@ obs, rewards, terminations, truncations, infos = env.step(actions)
 | `reset` | `(seed, options) -> (observations, infos)` | Start a new episode; returns initial observations |
 | `step` | `(actions) -> (obs, rewards, terms, truncs, infos)` | Apply actions and advance the simulation by one decision interval |
 | `observation_space` | `(agent) -> Box` | Get observation space for an agent (RLlib-compatible) |
-| `action_space` | `(agent) -> Box` | Get action space for an agent (RLlib-compatible) |
+| `action_space` | `(agent) -> Box / Discrete` | Get action space for an agent (RLlib-compatible); depends on `action_space` config |
 | `observe` | `(agent) -> ndarray` | Get current observation for a specific agent |
 | `state` | `() -> ndarray` | Get concatenated global observation (for centralized-critic algorithms) |
 | `render` | `(mode) -> None` | Print current environment state to console |
@@ -420,7 +463,7 @@ obs, rewards, terminations, truncations, infos = env.step(actions)
 | `possible_agents` | list | All agent IDs in the scenario |
 | `core_env` | SWMMEnv | Underlying core MDP environment |
 | `observation_spaces` | dict | Per-agent observation spaces |
-| `action_spaces` | dict | Per-agent action spaces |
+| `action_spaces` | dict | Per-agent action spaces (Box or Discrete)
 
 ### `SWMMMultiAgentEnv(env_config)`
 
@@ -453,9 +496,9 @@ obs, rewards, terms, truncs, infos = env.step(actions)
 |-----------|------|-------------|
 | `possible_agents` | list | All agent IDs (replaces deprecated `get_agent_ids()`) |
 | `observation_space` | `spaces.Dict` | Dict mapping agent ID → `Box` (legacy OldAPIStack) |
-| `action_space` | `spaces.Dict` | Dict mapping agent ID → `Box` (legacy OldAPIStack) |
+| `action_space` | `spaces.Dict` | Dict mapping agent ID → `Box`/`Discrete` (legacy OldAPIStack) |
 | `observation_spaces` | dict | Per-agent observation spaces (new API stack) |
-| `action_spaces` | dict | Per-agent action spaces (new API stack) |
+| `action_spaces` | dict | Per-agent action spaces (`Box` or `Discrete`, new API stack) |
 
 ### `make_rllib_env(config_path)`
 

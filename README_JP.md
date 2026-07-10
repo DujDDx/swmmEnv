@@ -21,7 +21,7 @@ SWMMEnv は EPA SWMM の水理シミュレーションを、PettingZoo 互換か
 - **PettingZoo ParallelEnv API** — MARLlib、RLlib、Tianshou などとシームレスに連携
 - **RLlib MultiAgentEnv API** — クラス名を直接渡すだけで OK、手動アダプター不要
 - **設定駆動型** — SWMM モデルの変更にコード修正は不要
-- **多様なエージェントタイプ** — ポンプ、ゲート、堰、連続制御 [0, 1]
+- **多様なエージェントタイプ** — ポンプ、ゲート、堰、連続制御と離散制御に対応
 - **時刻同期** — RL の決定間隔と SWMM のルーティングステップを分離
 - **状態正規化** — z-score または min-max 正規化で安定した学習を実現
 - **プラグ可能な報酬関数** — 洪水、水位偏差、エネルギー消費などの多目的報酬コンポーネントを内蔵
@@ -63,7 +63,7 @@ env = SWMMParallelEnv(config)
 # 環境をリセット
 observations, info = env.reset()
 
-# 1ステップ：各エージェントが連続動作 [0, 1] を出力
+# 1ステップ：各エージェントが動作を出力（連続値または離散インデックス）
 actions = {agent: env.action_space(agent).sample() for agent in env.agents}
 observations, rewards, terminations, truncations, infos = env.step(actions)
 
@@ -223,7 +223,7 @@ agents:
 ```
 
 サポートされる SWMM 要素：pump、gate（定速ポンプ制御によるゲート模擬）、weir、orifice。
-各要素は連続制御 [0, 1]（0 = 全閉、1 = 全開）をサポートします。
+各要素は連続制御 [0, 1]（0 = 全閉、1 = 全開）および離散制御（`action_space` 設定による）をサポートします。
 
 ### reward 設定
 
@@ -236,6 +236,41 @@ reward:
   level_deviation_penalty: 1.0    # 目標水位からの偏差ペナルティ
   energy_penalty: 0.1             # ポンプエネルギー消費ペナルティ
 ```
+
+## アクション空間設定
+
+アクション空間のタイプは、オプションの `action_space` 設定セクションで制御します。省略した場合、環境は連続 `Box(0, 1, shape=(1,))` をデフォルトとします。
+
+### 連続アクション空間
+
+```yaml
+action_space:
+  type: continuous
+  low: 0.0
+  high: 1.0
+  shape: [1]
+```
+
+各エージェントは `[0, 1]` の浮動小数点数を出力し、SWMM 要素の目標開度として直接適用されます。
+
+### 離散アクション空間
+
+```yaml
+action_space:
+  type: discrete
+  n: 11
+```
+
+各エージェントは整数インデックス `0, 1, ..., n-1` を出力し、等間隔の連続値にマッピングされます：
+
+```
+インデックス 0 → target_setting 0.0
+インデックス 1 → target_setting 0.1
+...
+インデックス n-1 → target_setting 1.0
+```
+
+基礎となる SWMM シミュレーションは常に連続 `[0, 1]` 開度値を受け取ります——離散は同じ連続制御空間への異なる入力インターフェースです。
 
 ### normalization 設定
 
