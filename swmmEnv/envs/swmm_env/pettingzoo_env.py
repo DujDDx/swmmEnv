@@ -97,13 +97,21 @@ class SWMMParallelEnv(ParallelEnv):
         Action space is driven by config['action_space']:
         - type == 'discrete' -> spaces.Discrete(n)
         - type == 'continuous' (default) -> spaces.Box(low, high, shape)
+
+        Observation dimensions are read from core_env._obs_dims (computed from
+        observation config) or fall back to class-level SWMMEnv.OBS_DIMS.
         """
         self.observation_spaces = {}
         self.action_spaces = {}
 
         for agent_id in self.possible_agents:
             agent_type = self.core_env.mapping.get_element_type(agent_id)
-            obs_dim = SWMMEnv.OBS_DIMS.get(agent_type, 4)
+
+            # Use dynamic obs_dims if available, otherwise fall back to class-level static
+            if hasattr(self.core_env, '_obs_dims'):
+                obs_dim = self.core_env._obs_dims.get(agent_type, SWMMEnv.OBS_DIMS.get(agent_type, 4))
+            else:
+                obs_dim = SWMMEnv.OBS_DIMS.get(agent_type, 4)
 
             # Observation space: continuous values (normalized)
             # Using reasonable bounds after normalization

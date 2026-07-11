@@ -24,6 +24,7 @@ SWMMEnv wraps EPA SWMM hydraulic simulations as a PettingZoo-compatible and RLli
 - **Time synchronization** —decouples RL decision interval from SWMM routing step
 - **State normalization** —z-score or min-max normalization for stable training
 - **Custom reward functions** —pluggable reward with flooding, level-deviation, and energy components
+- **Configurable observations** —declarative feature selection or custom observation function injection
 - **Parallel worker support** —isolated `.inp` copies for safe multi-worker training
 
 ## Installation
@@ -296,6 +297,118 @@ max_steps: 1000
 ```
 
 ## Agent Observation & Action Space
+
+### Observation Space
+
+Observations can be configured in two ways:
+
+#### 1. Declarative Configuration (Recommended)
+
+Specify per-agent-type features in YAML config:
+
+```yaml
+observation:
+  mode: declarative
+  features:
+    pump:
+      - upstream_depth
+      - downstream_depth
+      - flow
+      - setting
+      - rainfall
+    gate:
+      - upstream_depth
+      - downstream_depth
+      - setting
+      - rainfall
+```
+
+**Available features:**
+
+| Feature | Description |
+|---------|-------------|
+| `upstream_depth` | Upstream node water depth |
+| `downstream_depth` | Downstream node water depth |
+| `flow` | Link flow rate |
+| `setting` | Current control setting |
+| `rainfall` | Rainfall from configured gage |
+| `upstream_flooding` | Upstream node flooding rate |
+| `downstream_flooding` | Downstream node flooding rate |
+| `total_flooding` | System-wide flooding |
+| `upstream_head` | Upstream water elevation |
+| `downstream_head` | Downstream water elevation |
+| `upstream_volume` | Upstream stored volume |
+| `downstream_volume` | Downstream stored volume |
+| `upstream_inflow` | Upstream inflow rate |
+| `downstream_inflow` | Downstream inflow rate |
+| `link_depth` | Link flow depth |
+| `link_volume` | Link flow volume |
+
+You can also register custom features:
+
+```python
+from swmmEnv import register_feature_extractor
+
+def my_feature(engine, agent_config, obs_raingage):
+    # Custom extraction logic
+    return engine.get_node_state("CustomNode")["depth"]
+
+register_feature_extractor("my_custom_depth", my_feature, "depth")
+```
+
+#### 2. Custom Observation Function
+
+Inject a completely custom observation function:
+
+```python
+from swmmEnv import register_observation_fn
+import numpy as np
+
+def my_observation(engine, agent_id, config):
+    agent_cfg = config["agents"][agent_id]
+    depth = engine.get_node_state(agent_cfg["upstream_node"])["depth"]
+    flow = engine.get_link_state(agent_cfg["link_id"])["flow"]
+    return np.array([depth, flow], dtype=np.float32)
+
+register_observation_fn("my_obs", my_observation)
+```
+
+Then in config:
+
+```yaml
+observation:
+  mode: custom
+  observation_fn: "my_obs"
+```
+
+Or pass directly:
+
+```python
+config["observation"] = {"mode": "custom", "observation_fn": my_observation}
+```
+
+For stateful observation functions (e.g., with history):
+
+```python
+from swmmEnv import CustomObservationFunction
+
+class HistoryObservation(CustomObservationFunction):
+    def __init__(self, history_length=3):
+        self.history_length = history_length
+        self.history = {}
+
+    def __call__(self, engine, agent_id, config):
+        # Build observation with history
+        ...
+
+    def get_obs_dim(self):
+        return self.history_length * 2
+
+    def reset(self):
+        self.history = {}
+```
+
+### Default Observation Dimensions
 
 | Agent Type | Observation Dim | Features |
 |-----------|----------------|----------|
@@ -794,6 +907,10 @@ swmmEnv/
 │   │   │   ├── pettingzoo_env.py # PettingZoo ParallelEnv wrapper
 │   │   │   └── rllib_env.py     # RLlib MultiAgentEnv adapter
 │   │   └── register_env.py      # MARLlib / RLlib registration helpers
+│   ├── observation/
+│   │   ├── feature_extractors.py # Feature extractor registry
+│   │   ├── default_observation.py # Observation function builder
+│   │   └── custom_observation.py # Custom observation templates
 │   ├── reward/
 │   │   ├── default_reward.py    # Built-in reward functions
 │   │   └── custom_reward.py     # Custom reward templates

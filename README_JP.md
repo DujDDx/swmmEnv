@@ -25,6 +25,7 @@ SWMMEnv は EPA SWMM の水理シミュレーションを、PettingZoo 互換か
 - **時刻同期** — RL の決定間隔と SWMM のルーティングステップを分離
 - **状態正規化** — z-score または min-max 正規化で安定した学習を実現
 - **プラグ可能な報酬関数** — 洪水、水位偏差、エネルギー消費などの多目的報酬コンポーネントを内蔵
+- **設定可能な観測ベクトル** — 宣言的な特徴選択またはカスタム観測関数の注入
 - **並列ワーカー対応** — 分離された .inp コピーにより、安全なマルチワーカー並列学習をサポート
 
 ## インストール
@@ -237,6 +238,131 @@ reward:
   energy_penalty: 0.1             # ポンプエネルギー消費ペナルティ
 ```
 
+## エージェントの観測とアクション空間
+
+### 観測空間
+
+観測ベクトルは 2 つの方法で設定できます：
+
+#### 1. 宣言的設定（推奨）
+
+YAML 設定ファイルでエージェントタイプごとに特徴を指定します：
+
+```yaml
+observation:
+  mode: declarative
+  features:
+    pump:
+      - upstream_depth
+      - downstream_depth
+      - flow
+      - setting
+      - rainfall
+    gate:
+      - upstream_depth
+      - downstream_depth
+      - setting
+      - rainfall
+```
+
+**利用可能な特徴一覧：**
+
+| 特徴名 | 説明 |
+|-------|------|
+| `upstream_depth` | 上流ノード水深 |
+| `downstream_depth` | 下流ノード水深 |
+| `flow` | リンク流量 |
+| `setting` | 現在の制御開度 |
+| `rainfall` | 設定された雨量計の降雨強度 |
+| `upstream_flooding` | 上流ノード洪水率 |
+| `downstream_flooding` | 下流ノード洪水率 |
+| `total_flooding` | システム全体の洪水 |
+| `upstream_head` | 上流水位標高 |
+| `downstream_head` | 下流水位標高 |
+| `upstream_volume` | 上流貯留体積 |
+| `downstream_volume` | 下流貯留体積 |
+| `upstream_inflow` | 上流流入率 |
+| `downstream_inflow` | 下流流入率 |
+| `link_depth` | リンク水深 |
+| `link_volume` | リンク水体積 |
+
+カスタム特徴を登録することもできます：
+
+```python
+from swmmEnv import register_feature_extractor
+
+def my_feature(engine, agent_config, obs_raingage):
+    # カスタム抽出ロジック
+    return engine.get_node_state("CustomNode")["depth"]
+
+register_feature_extractor("my_custom_depth", my_feature, "depth")
+```
+
+#### 2. カスタム観測関数
+
+完全にカスタムな観測関数を注入します：
+
+```python
+from swmmEnv import register_observation_fn
+import numpy as np
+
+def my_observation(engine, agent_id, config):
+    agent_cfg = config["agents"][agent_id]
+    depth = engine.get_node_state(agent_cfg["upstream_node"])["depth"]
+    flow = engine.get_link_state(agent_cfg["link_id"])["flow"]
+    return np.array([depth, flow], dtype=np.float32)
+
+register_observation_fn("my_obs", my_observation)
+```
+
+設定で使用：
+
+```yaml
+observation:
+  mode: custom
+  observation_fn: "my_obs"
+```
+
+または直接渡す：
+
+```python
+config["observation"] = {"mode": "custom", "observation_fn": my_observation}
+```
+
+状態を保持する観測関数（履歴など）の場合：
+
+```python
+from swmmEnv import CustomObservationFunction
+
+class HistoryObservation(CustomObservationFunction):
+    def __init__(self, history_length=3):
+        self.history_length = history_length
+        self.history = {}
+
+    def __call__(self, engine, agent_id, config):
+        # 履歴付きの観測ベクトルを構築
+        ...
+
+    def get_obs_dim(self):
+        return self.history_length * 2
+
+    def reset(self):
+        self.history = {}
+```
+
+### デフォルト観測次元
+
+| エージェントタイプ | 観測次元 | 構成 |
+|------------------|---------|------|
+| pump（ポンプ）| 5 | 上流水深、下流水深、流量、現在の開度、降雨強度 |
+| gate（ゲート）| 4 | 上流水深、下流水深、現在の開度、降雨強度 |
+| weir（堰）| 4 | 上流水深、下流水深、現在の開度、降雨強度 |
+
+- **観測空間**：`Box(-∞, +∞)`、z-score 正規化後
+- **アクション空間**：設定可能 — 連続 `Box(0, 1)`（デフォルト）または `Discrete(n)`。詳細は[アクション空間設定](#アクション空間設定)を参照。
+
+すべてのエージェントは **グローバル報酬** を共有します（結合された排水システムの物理的特性）。
+
 ## アクション空間設定
 
 アクション空間のタイプは、オプションの `action_space` 設定セクションで制御します。省略した場合、環境は連続 `Box(0, 1, shape=(1,))` をデフォルトとします。
@@ -377,6 +503,10 @@ swmmEnv/
 │   │   │   ├── pettingzoo_env.py # PettingZoo ParallelEnv ラッパー
 │   │   │   └── rllib_env.py     # RLlib MultiAgentEnv アダプター
 │   │   └── register_env.py      # MARLlib / RLlib 登録ヘルパー
+│   ├── observation/             # 観測モジュール
+│   │   ├── feature_extractors.py # 特徴抽出器レジストリ
+│   │   ├── default_observation.py # 観測関数ビルダー
+│   │   └── custom_observation.py # カスタム観測テンプレート
 │   ├── reward/                  # 報酬モジュール
 │   │   ├── default_reward.py    # 内蔵報酬関数コレクション
 │   │   └── custom_reward.py     # カスタム報酬テンプレート

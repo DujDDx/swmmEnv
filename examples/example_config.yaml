@@ -18,6 +18,51 @@ agents:
     upstream_node: J3
     downstream_node: J4
 
+# Observation configuration
+# Two modes: declarative (feature-based) or custom (function injection)
+#
+# === Declarative mode ===
+# Specify per-agent-type feature lists. Available features:
+#   - upstream_depth, downstream_depth: node depths
+#   - flow, setting: link flow rate and control setting
+#   - rainfall: rainfall from configured raingage
+#   - upstream_flooding, downstream_flooding: node flooding rates
+#   - total_flooding: system-wide flooding
+#   - upstream_head, downstream_head: water elevations
+#   - upstream_volume, downstream_volume: stored volumes
+#   - upstream_inflow, downstream_inflow: inflow rates
+#   - link_depth, link_volume: link state
+#
+# You can also register custom features via register_feature_extractor().
+observation:
+  mode: declarative
+  features:
+    pump:
+      - upstream_depth
+      - downstream_depth
+      - flow
+      - setting
+      - rainfall
+    gate:
+      - upstream_depth
+      - downstream_depth
+      - setting
+      - rainfall
+    weir:
+      - upstream_depth
+      - downstream_depth
+      - setting
+      - rainfall
+
+# === Custom mode (advanced) ===
+# Inject a custom observation function:
+# observation:
+#   mode: custom
+#   observation_fn: "my_custom_obs"  # registered name
+# Or pass a callable directly in Python:
+#   config['observation'] = {'mode': 'custom', 'observation_fn': my_callable}
+# Custom function signature: (engine, agent_id, config) -> np.ndarray
+
 # Nodes to observe for state information
 obs_nodes:
   - J1

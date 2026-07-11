@@ -13,6 +13,11 @@ from swmmEnv.sim.time_sync import TimeSync
 from swmmEnv.sim.normalizer import StateNormalizer
 from swmmEnv.sim.mapping import MappingRegistry
 from swmmEnv.reward.default_reward import default_reward, get_reward_fn
+from swmmEnv.observation.default_observation import (
+    build_observation_fn,
+    compute_obs_dims,
+    DEFAULT_FEATURES,
+)
 
 
 class SWMMEnv:
@@ -113,6 +118,21 @@ class SWMMEnv:
         self.action_space_type = action_cfg.get('type', 'continuous')
         self.action_space_n = action_cfg.get('n', 11)  # discrete action count
 
+        # --- Observation system ---
+        # Build the observation function (legacy, declarative, or custom)
+        self._obs_fn = build_observation_fn(
+            config, self.engine, self.mapping, self.normalizer, self.obs_raingage
+        )
+
+        # Compute obs dims dynamically if declarative config is present
+        obs_cfg = config.get('observation', None)
+        if obs_cfg and obs_cfg.get('mode', 'declarative') == 'declarative':
+            features_config = obs_cfg.get('features', DEFAULT_FEATURES)
+            self._obs_dims = compute_obs_dims(features_config)
+        else:
+            # Use default OBS_DIMS for backward compatibility
+            self._obs_dims = SWMMEnv.OBS_DIMS.copy()
+
     def reset(self) -> Dict[str, np.ndarray]:
         """
         Reset environment for new episode.
@@ -212,77 +232,16 @@ class SWMMEnv:
         """
         Get observation for a specific agent.
 
+        Delegates to the configured observation function (legacy hard-coded,
+        declarative config-driven, or custom injected).
+
         Args:
             agent_id: Agent identifier
 
         Returns:
             Normalized observation array
         """
-        agent_config = self.mapping.get_agent_config(agent_id)
-        agent_type = agent_config['type']
-
-        # Get rainfall observation
-        rainfall = self.engine.get_rainfall(self.obs_raingage)
-
-        if agent_type == 'pump':
-            # Pump observation: upstream_depth, downstream_depth, flow, setting, rainfall
-            upstream_node = agent_config.get('upstream_node')
-            downstream_node = agent_config.get('downstream_node')
-            link_id = agent_config['link_id']
-
-            upstream_depth = (
-                self.engine.get_node_state(upstream_node)['depth']
-                if upstream_node else 0.0
-            )
-            downstream_depth = (
-                self.engine.get_node_state(downstream_node)['depth']
-                if downstream_node else 0.0
-            )
-            link_state = self.engine.get_link_state(link_id)
-            flow = link_state['flow']
-            setting = link_state['current_setting']
-
-            raw_obs = np.array([
-                upstream_depth,
-                downstream_depth,
-                flow,
-                setting,
-                rainfall
-            ], dtype=np.float32)
-
-            # Normalize
-            obs_names = ['depth', 'depth', 'flow', 'setting', 'rainfall']
-            normalized_obs = self.normalizer.normalize_obs(raw_obs, obs_names)
-
-        else:  # gate or weir
-            # Observation: upstream_depth, downstream_depth, setting, rainfall
-            upstream_node = agent_config.get('upstream_node')
-            downstream_node = agent_config.get('downstream_node')
-            link_id = agent_config['link_id']
-
-            upstream_depth = (
-                self.engine.get_node_state(upstream_node)['depth']
-                if upstream_node else 0.0
-            )
-            downstream_depth = (
-                self.engine.get_node_state(downstream_node)['depth']
-                if downstream_node else 0.0
-            )
-            link_state = self.engine.get_link_state(link_id)
-            setting = link_state['current_setting']
-
-            raw_obs = np.array([
-                upstream_depth,
-                downstream_depth,
-                setting,
-                rainfall
-            ], dtype=np.float32)
-
-            # Normalize
-            obs_names = ['depth', 'depth', 'setting', 'rainfall']
-            normalized_obs = self.normalizer.normalize_obs(raw_obs, obs_names)
-
-        return normalized_obs
+        return self._obs_fn(agent_id)
 
     def get_reward(self) -> float:
         """

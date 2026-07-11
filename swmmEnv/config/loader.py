@@ -90,6 +90,60 @@ def _validate_action_space(action_space: Dict[str, Any]) -> None:
             )
 
 
+def _validate_observation_config(observation: Dict[str, Any]) -> None:
+    """
+    Validate observation configuration.
+
+    Args:
+        observation: Observation configuration dictionary
+
+    Raises:
+        ValueError: If configuration is invalid
+    """
+    mode = observation.get('mode', 'declarative')
+
+    if mode not in ('declarative', 'custom'):
+        raise ValueError(
+            f"observation.mode must be 'declarative' or 'custom', got '{mode}'"
+        )
+
+    if mode == 'declarative':
+        features = observation.get('features')
+        if features is None:
+            raise ValueError(
+                "observation.features is required when mode == 'declarative'"
+            )
+        if not isinstance(features, dict):
+            raise ValueError(
+                "observation.features must be a dict mapping agent_type to feature list"
+            )
+        for agent_type, feature_list in features.items():
+            if not isinstance(feature_list, list) or not feature_list:
+                raise ValueError(
+                    f"observation.features.{agent_type} must be a non-empty list"
+                )
+            # Validate each feature name is known
+            from swmmEnv.observation.feature_extractors import FEATURE_EXTRACTOR_REGISTRY
+            for fname in feature_list:
+                if fname not in FEATURE_EXTRACTOR_REGISTRY:
+                    available = list(FEATURE_EXTRACTOR_REGISTRY.keys())
+                    raise ValueError(
+                        f"Unknown feature '{fname}' in observation.features.{agent_type}. "
+                        f"Available features: {available}"
+                    )
+
+    elif mode == 'custom':
+        fn = observation.get('observation_fn')
+        if fn is None:
+            raise ValueError(
+                "observation.observation_fn is required when mode == 'custom'"
+            )
+        if not isinstance(fn, str) and not callable(fn):
+            raise ValueError(
+                "observation.observation_fn must be a string (registry name) or callable"
+            )
+
+
 def validate_config(config: Dict[str, Any]) -> None:
     """
     Validate configuration structure and values.
@@ -155,6 +209,10 @@ def validate_config(config: Dict[str, Any]) -> None:
     # Validate action_space if provided
     if 'action_space' in config:
         _validate_action_space(config['action_space'])
+
+    # Validate observation config if provided
+    if 'observation' in config:
+        _validate_observation_config(config['observation'])
 
     # Validate inp_file if provided
     if 'inp_file' in config:

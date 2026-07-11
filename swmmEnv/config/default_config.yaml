@@ -18,6 +18,35 @@ agents:
     downstream_node: J4
 
 # Observation configuration
+# mode: "declarative" (feature-based config) or "custom" (inject custom function)
+# If this entire section is omitted, the legacy hard-coded observation is used
+observation:
+  mode: declarative
+  features:
+    pump:
+      - upstream_depth
+      - downstream_depth
+      - flow
+      - setting
+      - rainfall
+    gate:
+      - upstream_depth
+      - downstream_depth
+      - setting
+      - rainfall
+    weir:
+      - upstream_depth
+      - downstream_depth
+      - setting
+      - rainfall
+
+# For mode: custom, specify a registered name or pass a callable directly:
+# observation:
+#   mode: custom
+#   observation_fn: "my_custom_obs"  # string → registry lookup
+#   # OR pass callable directly in Python:
+#   # config['observation'] = {'mode': 'custom', 'observation_fn': my_callable}
+
 obs_nodes:
   - J1
   - J2
